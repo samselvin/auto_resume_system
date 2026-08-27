@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --theme-bg: #f8fafd;
+    --theme-surface: #ffffff;
+    --theme-surface-hover: #f0f4f9;
+    --theme-border: #e3e3e3;
+    --theme-border-subtle: #f0f4f9;
+    --theme-text-primary: #1f1f1f;
+    --theme-text-secondary: #444746;
+    --theme-text-muted: #747775;
+    --theme-accent: #1a73e8;
+    --theme-accent-hover: #1557b0;
+    --app-gradient: linear-gradient(135deg, #1a73e8 0%, #7c3aed 50%, #d946ef 100%);
+  }
+
+  .dark {
+    --theme-bg: #131314;
+    --theme-surface: #1e1f20;
+    --theme-surface-hover: #282a2c;
+    --theme-border: #37393b;
+    --theme-border-subtle: #282a2c;
+    --theme-text-primary: #e3e3e3;
+    --theme-text-secondary: #c4c7c5;
+    --theme-text-muted: #8e918f;
+    --theme-accent: #8ab4f8;
+    --theme-accent-hover: #aecbfa;
+  }
+
+  body {
+    background-color: var(--theme-bg);
+    color: var(--theme-text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+/* Modern gradient & card utilities */
+.app-gradient-text {
+  background: linear-gradient(135deg, #1a73e8 0%, #7c3aed 45%, #d946ef 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-gradient-bg {
+  background: linear-gradient(135deg, #1a73e8 0%, #7c3aed 45%, #d946ef 100%);
+}
+
+.app-card {
+  background-color: var(--theme-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+}
+
+.dark .app-card {
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.35);
+}

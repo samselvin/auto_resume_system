@@ -1,0 +1,6 @@
+{
+  "name": "ATS Resume & Career Placement Portal",
+  "description": "Student job portal with local ATS resume scoring, job matching, XYZ bullet optimizer, and salary-tier filters. No Gemini API required.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
