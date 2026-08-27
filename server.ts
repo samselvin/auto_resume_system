@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import { MOCK_JOBS } from "./src/data/mockJobs";
 import { inspectDraft, inspectJob, runJobBoardAgent } from "./src/lib/jobBoardAgent";
 import { fetchImportantLinkedInJobs, isAgentLinkedInJobId } from "./src/lib/linkedinGuestFeed";
+import { compareResumeToJob } from "./src/lib/resumeJobMatch";
 
 dotenv.config();
 
@@ -144,44 +145,30 @@ function generateFallbackScan(resumeText: string) {
 
 // Fallback Job Match
 function generateFallbackJobMatch(resumeText: string, job: any) {
-  const reqSkills: string[] = Array.isArray(job?.skills) ? job.skills : ["JavaScript", "React", "Node.js", "Problem Solving"];
-  const resumeLower = (resumeText || "").toLowerCase();
-
-  const matched = reqSkills.filter((s) => resumeLower.includes(s.toLowerCase()));
-  const missing = reqSkills.filter((s) => !resumeLower.includes(s.toLowerCase()));
-
-  const matchScore = resumeLower.length > 50 
-    ? Math.round(Math.min(98, Math.max(45, (matched.length / Math.max(reqSkills.length, 1)) * 50 + 40)))
-    : 78;
-
-  const effectiveMatched = matched.length > 0 ? matched : reqSkills.slice(0, 2);
-  const effectiveMissing = missing.length > 0 ? missing : ["Cloud Architecture", "System Design"];
+  const { matchScore, matchedSkills, missingSkills } = compareResumeToJob(resumeText || "", job);
+  const resumeLower = (resumeText || "").trim();
 
   const fitSummary = resumeLower.length > 50
-    ? `Candidate has strong alignment with ${job.title || "the role"} at ${job.company || "the company"}. Matches core competencies in ${effectiveMatched.slice(0, 3).join(", ") || "software engineering"}.`
-    : `Baseline comparison for ${job.title || "the role"} at ${job.company || "the company"}. Upload your full resume in ATS Scanner for a personalized cross-match.`;
+    ? `Your resume matches ${matchScore}% of the listed requirements for ${job.title || "this role"} at ${job.company || "the company"}.`
+    : `Upload your resume in ATS Scanner, then compare again for a personalized match score.`;
 
   return {
     jobId: job.id || "job-1",
     matchScore,
-    matchedSkills: effectiveMatched,
-    matchingSkills: effectiveMatched,
-    missingSkills: effectiveMissing,
+    matchedSkills,
+    matchingSkills: matchedSkills,
+    missingSkills,
     fitSummary,
     analysis: fitSummary,
     recommendation: fitSummary,
-    keyStrengthsForRole: [
-      `Direct alignment with ${effectiveMatched.slice(0, 2).join(" & ") || "required foundational tech"}.`,
-      `Profile matches the expected ${job.experience || "relevant"} experience tier for ${job.salaryLpa || "this role"}.`,
-      "Good engineering fundamentals and problem-solving methodology."
-    ],
-    recommendedActions: [
-      effectiveMissing.length > 0 ? `Highlight any exposure or projects utilizing ${effectiveMissing.slice(0, 2).join(", ")}.` : "Quantify recent project achievements with specific percentage metrics.",
-      `Tailor your summary to emphasize alignment with ${job.company || "the company"}'s engineering values.`,
-      "Review system design concepts relevant to distributed cloud platforms."
-    ],
-    coverLetter: `Dear Hiring Manager at ${job.company || "the company"},\n\nI am writing to express my enthusiastic interest in the ${job.title || "Software Engineering"} position. With my background in ${effectiveMatched.slice(0, 3).join(", ") || "modern software engineering"} and proven track record of shipping scalable, user-centric software solutions, I am confident in my ability to immediately contribute to ${job.company || "your"}'s team.\n\nIn my previous projects, I have focused on writing maintainable code, optimizing system performance, and collaborating closely with cross-functional teams. I am particularly excited about ${job.company || "your"}'s mission and would welcome the opportunity to discuss how my skill set aligns with your upcoming goals.\n\nThank you for your time and consideration.\n\nSincerely,\nCandidate`,
-    coldEmail: `Subject: Application: ${job.title || "Software Engineer"} - Candidate Profile\n\nHi [Hiring Team],\n\nI noticed the opening for ${job.title || "Software Engineer"} at ${job.company || "your team"} and wanted to reach out directly. My core background in ${effectiveMatched.slice(0, 3).join(", ")} directly aligns with what you're building.\n\nI recently delivered impactful improvements reducing latency and scaling technical modules, and I'd love to bring the same dedication to ${job.company || "the team"}.\n\nI've attached my resume for your review. Would you be open to a brief 10-minute chat this week?\n\nBest regards,\n[Your Name]`
+    keyStrengthsForRole: matchedSkills.length
+      ? [`Resume includes ${matchedSkills.slice(0, 3).join(", ")}.`, "Keep those keywords in your summary and recent bullets."]
+      : ["Add the role’s core tools and languages into your skills and project bullets."],
+    recommendedActions: missingSkills.length
+      ? [`Add evidence for ${missingSkills.slice(0, 3).join(", ")} if you have that experience.`, `Mirror wording from the ${job.company || "company"} LinkedIn post.`]
+      : ["Quantify outcomes in your strongest bullets.", `Tailor the summary to ${job.company || "the company"}.`],
+    coverLetter: `Dear Hiring Manager at ${job.company || "the company"},\n\nI am applying for ${job.title || "the role"}. My resume matches ${matchScore}% of the listed requirements${matchedSkills.length ? `, including ${matchedSkills.slice(0, 3).join(", ")}` : ""}.\n\nSincerely,\nCandidate`,
+    coldEmail: `Subject: Application: ${job.title || "Software Engineer"}\n\nHi [Hiring Team],\n\nI am applying for ${job.title || "the role"} at ${job.company || "your team"}. Resume match vs listed requirements: ${matchScore}%.\n\nBest regards,\n[Your Name]`,
   };
 }
 

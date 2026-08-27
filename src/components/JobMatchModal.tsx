@@ -79,19 +79,23 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
     ? matchResult.matchedSkills
     : Array.isArray(matchResult?.matchingSkills)
     ? matchResult.matchingSkills
-    : (job?.skills?.slice(0, 3) || ['React', 'TypeScript', 'Node.js']);
-  
-  const missingSkills = Array.isArray(matchResult?.missingSkills)
-    ? matchResult.missingSkills
-    : ['System Design', 'Cloud Deployment'];
+    : [];
+
+  const matchedKeys = new Set(matchingSkills.map((s) => s.toLowerCase().trim()));
+  const missingSkills = (
+    Array.isArray(matchResult?.missingSkills) ? matchResult.missingSkills : []
+  ).filter((s) => !matchedKeys.has(s.toLowerCase().trim()));
+
+  const matchScore = typeof matchResult?.matchScore === 'number' ? matchResult.matchScore : null;
 
   const recommendationText = stripPercentFromVerdict(
-    matchResult?.recommendation || matchResult?.fitSummary || 'Profile matches key tech stack requirements.'
+    matchResult?.recommendation || matchResult?.fitSummary || 'Profile compared against listed role requirements.'
   );
   const analysisText = stripPercentFromVerdict(
     matchResult?.analysis || matchResult?.fitSummary || 'ATS cross-referencing complete.'
   );
-  const keyStrengths = Array.isArray(matchResult?.keyStrengthsForRole) ? matchResult.keyStrengthsForRole : [];
+  const keyStrengths = (Array.isArray(matchResult?.keyStrengthsForRole) ? matchResult.keyStrengthsForRole : [])
+    .filter((str) => !/see linkedin post/i.test(str));
   const recommendedActions = Array.isArray(matchResult?.recommendedActions) ? matchResult.recommendedActions : [];
 
   return (
@@ -126,16 +130,24 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
                   <MapPin className="w-3.5 h-3.5" />
                   {job.location} ({job.workplaceType})
                 </span>
-                <span>•</span>
-                <span className="flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  {job.salaryLpa}
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  {job.experience}
-                </span>
+                {!/see linkedin/i.test(job.salaryLpa || '') && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      {job.salaryLpa}
+                    </span>
+                  </>
+                )}
+                {!/see linkedin/i.test(job.experience || '') && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {job.experience}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -216,14 +228,26 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
                   <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
                     isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f8fafd] border-[#e3e3e3]'
                   }`}>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-xs font-bold text-[#1a73e8] dark:text-[#8ab4f8] uppercase tracking-wider block">
-                        AI Compatibility Verdict
+                        Resume match vs this role
                       </span>
                       <p className={`text-xs sm:text-sm font-medium mt-0.5 ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
                         {recommendationText}
                       </p>
                     </div>
+                    {matchScore !== null && (
+                      <div className={`flex-shrink-0 w-20 h-20 rounded-full border-4 flex flex-col items-center justify-center ${
+                        matchScore >= 70
+                          ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                          : matchScore >= 40
+                          ? 'border-amber-500 text-amber-600 dark:text-amber-400'
+                          : 'border-rose-400 text-rose-600 dark:text-rose-400'
+                      }`}>
+                        <span className="text-xl font-extrabold leading-none">{matchScore}%</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wide mt-0.5 opacity-80">match</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Skills Grid */}
@@ -237,14 +261,18 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
                         Matched Skills in Resume ({matchingSkills.length})
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {matchingSkills.map((s, i) => (
-                          <span
-                            key={i}
-                            className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                          >
-                            {s}
-                          </span>
-                        ))}
+                        {matchingSkills.length === 0 ? (
+                          <span className="text-xs text-[#747775]">None of the listed requirements appear in the resume.</span>
+                        ) : (
+                          matchingSkills.map((s, i) => (
+                            <span
+                              key={i}
+                              className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            >
+                              {s}
+                            </span>
+                          ))
+                        )}
                       </div>
                     </div>
 
@@ -257,14 +285,18 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
                         Missing Keywords for this Role ({missingSkills.length})
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {missingSkills.map((s, i) => (
-                          <span
-                            key={i}
-                            className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                          >
-                            +{s}
-                          </span>
-                        ))}
+                        {missingSkills.length === 0 ? (
+                          <span className="text-xs text-[#747775]">No gaps versus the listed requirements.</span>
+                        ) : (
+                          missingSkills.map((s, i) => (
+                            <span
+                              key={i}
+                              className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                            >
+                              +{s}
+                            </span>
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>

@@ -19,11 +19,13 @@ import { JobPortal } from './components/JobPortal';
 import { JobMatchModal } from './components/JobMatchModal';
 import { ClassroomGuideModal } from './components/ClassroomGuideModal';
 import { JobBoardAgent } from './components/JobBoardAgent';
+import { CompanyPostJob } from './components/CompanyPostJob';
 import { NotificationToast } from './components/NotificationToast';
 import { MOCK_JOBS } from './data/mockJobs';
 import { formatLinkedInPostedLine } from './lib/jobTime';
 import { openLinkedInApply } from './lib/jobLinks';
 import { isGoogleEmail } from './lib/googleEmail';
+import { compareResumeToJob } from './lib/resumeJobMatch';
 import confetti from 'canvas-confetti';
 
 export default function App() {
@@ -90,6 +92,7 @@ export default function App() {
   const [selectedJobForMatch, setSelectedJobForMatch] = useState<Job | null>(null);
   const [jobMatchResult, setJobMatchResult] = useState<JobMatchResult | null>(null);
   const [isMatchingJob, setIsMatchingJob] = useState(false);
+  const [jobMatchScores, setJobMatchScores] = useState<Record<string, number>>({});
 
   // Notifications state (accessible via notification center in navbar)
   const [notifications, setNotifications] = useState<JobNotification[]>([]);
@@ -401,7 +404,8 @@ export default function App() {
     setIsMatchingJob(true);
     setJobMatchResult(null);
 
-    const resumeContent = resumeData?.text || `Candidate profile with technical expertise in ${(job.skills || []).slice(0, 3).join(', ')} and Software Engineering.`;
+    const resumeContent = resumeData?.text || '';
+    const localMatch = compareResumeToJob(resumeContent, job);
 
     try {
       const response = await fetch('/api/job-match', {
@@ -424,70 +428,67 @@ export default function App() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data && !data.error && typeof data.matchScore === 'number') {
+        if (data && !data.error) {
+          const matchedSkills = localMatch.matchedSkills;
+          const missingSkills = localMatch.missingSkills;
+          const matchScore = localMatch.matchScore;
+          setJobMatchScores((prev) => ({ ...prev, [job.id]: matchScore }));
           setJobMatchResult({
             jobId: job.id,
-            matchScore: data.matchScore,
-            matchedSkills: data.matchedSkills || data.matchingSkills || job.skills?.slice(0, 3) || [],
-            matchingSkills: data.matchedSkills || data.matchingSkills || job.skills?.slice(0, 3) || [],
-            missingSkills: data.missingSkills || ['Cloud Microservices', 'CI/CD'],
-            fitSummary: data.fitSummary || data.analysis || `Evaluated compatibility with ${job.title} at ${job.company}.`,
-            analysis: data.analysis || data.fitSummary || `Evaluated compatibility with ${job.title} at ${job.company}.`,
-            recommendation: data.recommendation || (data.recommendedActions && data.recommendedActions[0]) || 'Strong potential match.',
-            keyStrengthsForRole: data.keyStrengthsForRole || [`Experience with required stack for ${job.title}`],
-            recommendedActions: data.recommendedActions || [`Highlight projects using ${job.skills?.[0] || 'core tech'}`],
-            coverLetter: data.coverLetter || `Dear Hiring Manager,\n\nI am writing to express my strong interest in ${job.title} at ${job.company}.\n\nSincerely,\nCandidate`,
-            coldEmail: data.coldEmail || `Subject: Application for ${job.title}\n\nHi,\n\nI am writing to apply for ${job.title} at ${job.company}.\n\nBest regards,\n[Your Name]`,
+            matchScore,
+            matchedSkills,
+            matchingSkills: matchedSkills,
+            missingSkills,
+            fitSummary: `Your resume matches ${matchScore}% of the listed requirements for ${job.title} at ${job.company}.`,
+            analysis: `Compared your resume to ${job.title} requirements. Matched ${matchedSkills.length} of ${matchedSkills.length + missingSkills.length} listed skills.`,
+            recommendation: `Resume match score: ${matchScore}%.`,
+            keyStrengthsForRole: matchedSkills.length
+              ? [`Resume includes ${matchedSkills.slice(0, 3).join(', ')}.`]
+              : ['Add the role’s core tools and keywords into your skills and project bullets.'],
+            recommendedActions: missingSkills.length
+              ? [`Add evidence for ${missingSkills.slice(0, 3).join(', ')} if you have that experience.`]
+              : ['Quantify outcomes in your strongest bullets.'],
+            coverLetter: data.coverLetter || `Dear Hiring Manager,\n\nI am writing to apply for ${job.title} at ${job.company}. Resume match: ${matchScore}%.\n\nSincerely,\nCandidate`,
+            coldEmail: data.coldEmail || `Subject: Application for ${job.title}\n\nHi,\n\nI am applying for ${job.title} at ${job.company}. Resume match: ${matchScore}%.\n\nBest regards,\n[Your Name]`,
           });
           return;
         }
       }
 
-      // Safe Client Fallback calculation
-      const skills = job.skills || ['JavaScript', 'React', 'Node.js'];
-      const matched = skills.filter((s) => resumeContent.toLowerCase().includes(s.toLowerCase()));
-      const missing = skills.filter((s) => !resumeContent.toLowerCase().includes(s.toLowerCase()));
-      const calculatedScore = resumeContent.length > 50
-        ? Math.round(Math.min(96, Math.max(50, (matched.length / Math.max(skills.length, 1)) * 50 + 42)))
-        : 82;
-
+      setJobMatchScores((prev) => ({ ...prev, [job.id]: localMatch.matchScore }));
       setJobMatchResult({
         jobId: job.id,
-        matchScore: calculatedScore,
-        matchedSkills: matched.length > 0 ? matched : skills.slice(0, 2),
-        matchingSkills: matched.length > 0 ? matched : skills.slice(0, 2),
-        missingSkills: missing.length > 0 ? missing : ['System Design', 'Cloud Architecture'],
-        fitSummary: `Strong compatibility match for ${job.title} at ${job.company}.`,
-        analysis: `Profile matches key foundational requirements for ${job.title}. Focus on highlighting ${matched.slice(0, 2).join(', ') || 'core skills'} in your application.`,
-        recommendation: `Emphasize hands-on experience in ${skills[0] || 'software development'} to maximize ATS pass probability.`,
-        keyStrengthsForRole: [
-          `Direct experience in relevant tech stack for ${job.title}.`,
-          `Matches the expected ${job.experience} experience tier for ${job.salaryLpa}.`,
-          'Solid engineering methodology and clean code practices.'
-        ],
-        recommendedActions: [
-          `Tailor bullet points to emphasize ${skills[0] || 'core competencies'}.`,
-          'Quantify recent business impact and system latency improvements.'
-        ],
-        coverLetter: `Dear Hiring Manager at ${job.company},\n\nI am writing to express my enthusiastic interest in the ${job.title} position (${job.salaryLpa}). With my technical background and hands-on experience building scalable applications, I am excited about the opportunity to contribute to ${job.company}'s engineering initiatives.\n\nThank you for your time and consideration.\n\nSincerely,\nCandidate`,
-        coldEmail: `Subject: Application: ${job.title} - Candidate Profile\n\nHi [Hiring Team],\n\nI noticed the opening for ${job.title} at ${job.company} and wanted to reach out directly. My core background in ${skills.slice(0, 3).join(', ')} directly aligns with what your team is building.\n\nI've attached my resume and would love to chat briefly this week.\n\nBest regards,\n[Your Name]`
+        matchScore: localMatch.matchScore,
+        matchedSkills: localMatch.matchedSkills,
+        matchingSkills: localMatch.matchedSkills,
+        missingSkills: localMatch.missingSkills,
+        fitSummary: `Your resume matches ${localMatch.matchScore}% of the listed requirements for ${job.title} at ${job.company}.`,
+        analysis: `Compared your resume to ${job.title} requirements (title + listed skills).`,
+        recommendation: `Resume match score: ${localMatch.matchScore}%.`,
+        keyStrengthsForRole: localMatch.matchedSkills.length
+          ? [`Resume includes ${localMatch.matchedSkills.slice(0, 3).join(', ')}.`]
+          : ['Add the role’s core tools into your skills section.'],
+        recommendedActions: localMatch.missingSkills.length
+          ? [`Add evidence for ${localMatch.missingSkills.slice(0, 3).join(', ')} if you have that experience.`]
+          : ['Quantify outcomes in your strongest bullets.'],
+        coverLetter: `Dear Hiring Manager at ${job.company},\n\nI am applying for ${job.title}. Resume match vs listed requirements: ${localMatch.matchScore}%.\n\nSincerely,\nCandidate`,
+        coldEmail: `Subject: Application: ${job.title}\n\nHi [Hiring Team],\n\nI am applying for ${job.title} at ${job.company}. Resume match: ${localMatch.matchScore}%.\n\nBest regards,\n[Your Name]`
       });
     } catch (error) {
       console.error('Error matching job:', error);
-      // Ensure state is still populated cleanly so no white screen can ever occur
-      const skills = job.skills || ['JavaScript', 'React', 'Node.js'];
+      setJobMatchScores((prev) => ({ ...prev, [job.id]: localMatch.matchScore }));
       setJobMatchResult({
         jobId: job.id,
-        matchScore: 80,
-        matchedSkills: skills.slice(0, 2),
-        matchingSkills: skills.slice(0, 2),
-        missingSkills: ['System Design', 'Cloud Infrastructure'],
-        fitSummary: `Compatibility match for ${job.title} at ${job.company}.`,
-        analysis: `Candidate profile matches foundational competencies for ${job.title}.`,
-        recommendation: `Highlight technical accomplishments in ${skills[0] || 'core engineering'}.`,
-        keyStrengthsForRole: [`Direct alignment with ${skills[0] || 'core engineering'}`],
-        recommendedActions: ['Review distributed systems architecture before interview'],
-        coverLetter: `Dear Hiring Manager at ${job.company},\n\nI am eager to apply for ${job.title}.\n\nSincerely,\nCandidate`,
+        matchScore: localMatch.matchScore,
+        matchedSkills: localMatch.matchedSkills,
+        matchingSkills: localMatch.matchedSkills,
+        missingSkills: localMatch.missingSkills,
+        fitSummary: `Your resume matches ${localMatch.matchScore}% of the listed requirements for ${job.title} at ${job.company}.`,
+        analysis: `Compared your resume to ${job.title} requirements.`,
+        recommendation: `Resume match score: ${localMatch.matchScore}%.`,
+        keyStrengthsForRole: localMatch.matchedSkills.length ? [`Resume includes ${localMatch.matchedSkills.join(', ')}.`] : ['Add core role keywords to your resume.'],
+        recommendedActions: localMatch.missingSkills.length ? [`Add ${localMatch.missingSkills.join(', ')} if you have that experience.`] : ['Quantify outcomes in your strongest bullets.'],
+        coverLetter: `Dear Hiring Manager at ${job.company},\n\nI am applying for ${job.title}.\n\nSincerely,\nCandidate`,
         coldEmail: `Subject: Application: ${job.title}\n\nHi Team,\n\nI am interested in ${job.title} at ${job.company}.\n\nBest regards,\n[Your Name]`
       });
     } finally {
@@ -509,7 +510,10 @@ export default function App() {
         salaryTier: job.salaryTier,
         appliedDate: 'Just Now',
         status: 'Applied',
-        matchScore: jobMatchResult?.jobId === job.id ? jobMatchResult.matchScore : 88,
+        matchScore:
+          jobMatchResult?.jobId === job.id
+            ? jobMatchResult.matchScore
+            : jobMatchScores[job.id] ?? compareResumeToJob(resumeData?.text || '', job).matchScore,
         notes,
       };
       setApplications([newApp, ...applications]);
@@ -649,6 +653,7 @@ export default function App() {
               appliedJobIds={appliedJobIds}
               resumeData={resumeData}
               mode={mode}
+              matchScores={jobMatchScores}
             />
           </div>
         )}

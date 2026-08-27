@@ -16,6 +16,7 @@ import { CompanyLogo } from './CompanyLogo';
 import { PostedTime } from './PostedTime';
 import { getPostedAt, isFreshPost } from '../lib/jobTime';
 import { getLinkedInApplyUrl } from '../lib/jobLinks';
+import { compareResumeToJob } from '../lib/resumeJobMatch';
 
 interface JobPortalProps {
   currentSalaryTier: SalaryTier;
@@ -26,6 +27,7 @@ interface JobPortalProps {
   resumeData: ResumeData | null;
   mode?: ThemeMode;
   jobs: Job[];
+  matchScores?: Record<string, number>;
 }
 
 export const JobPortal: React.FC<JobPortalProps> = ({
@@ -37,6 +39,7 @@ export const JobPortal: React.FC<JobPortalProps> = ({
   resumeData,
   mode = 'light',
   jobs,
+  matchScores = {},
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [workplaceFilter, setWorkplaceFilter] = useState<'All' | 'Remote' | 'Hybrid' | 'On-site'>('All');
@@ -67,11 +70,9 @@ export const JobPortal: React.FC<JobPortalProps> = ({
   };
 
   const calculateMatchScore = (job: Job) => {
+    if (typeof matchScores[job.id] === 'number') return matchScores[job.id];
     if (!resumeData?.text) return null;
-    const req = job.skills || [];
-    if (req.length === 0) return 80;
-    const matched = req.filter(s => resumeData.text.toLowerCase().includes(s.toLowerCase()));
-    return Math.min(98, Math.max(45, Math.round((matched.length / req.length) * 50 + 45)));
+    return compareResumeToJob(resumeData.text, job).matchScore;
   };
 
   const filteredJobs = useMemo(() => {
@@ -322,6 +323,7 @@ export const JobPortal: React.FC<JobPortalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {filteredJobs.map((job) => {
             const isApplied = appliedJobIds.has(job.id);
+            const liveMatch = calculateMatchScore(job);
 
             return (
               <div
@@ -390,11 +392,16 @@ export const JobPortal: React.FC<JobPortalProps> = ({
                       </span>
                     </div>
 
-                    {/* Live Compatibility Match Score */}
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                      isDark ? 'bg-[#282a2c] text-[#c4c7c5]' : 'bg-slate-100 text-[#444746]'
+                    <span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-full ${
+                      liveMatch === null
+                        ? isDark ? 'bg-[#282a2c] text-[#c4c7c5]' : 'bg-slate-100 text-[#444746]'
+                        : liveMatch >= 70
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                        : liveMatch >= 40
+                        ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200'
+                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300'
                     }`}>
-                      Apply on LinkedIn
+                      {liveMatch === null ? 'Upload resume for match %' : `${liveMatch}% resume match`}
                     </span>
                   </div>
 
