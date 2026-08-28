@@ -498,33 +498,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  <label className={`text-xs font-bold block ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
-                    I am a
-                  </label>
-                  <div className={`flex p-1 rounded-2xl border ${isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f8fafd] border-[#dadce0]'}`}>
-                    <button
-                      type="button"
-                      id="account-type-student"
-                      onClick={() => setAccountType('student')}
-                      className={`flex-1 py-2 text-xs font-bold rounded-xl cursor-pointer ${
-                        accountType === 'student' ? 'bg-[#1a73e8] text-white' : isDark ? 'text-[#8e918f]' : 'text-[#5f6368]'
-                      }`}
-                    >
-                      Student (find jobs)
-                    </button>
-                    <button
-                      type="button"
-                      id="account-type-company"
-                      onClick={() => setAccountType('company')}
-                      className={`flex-1 py-2 text-xs font-bold rounded-xl cursor-pointer ${
-                        accountType === 'company' ? 'bg-[#1a73e8] text-white' : isDark ? 'text-[#8e918f]' : 'text-[#5f6368]'
-                      }`}
-                    >
-                      Company (post jobs)
-                    </button>
-                  </div>
-                </div>
+                
 
                 <button
                   type="submit"
@@ -532,7 +506,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   disabled={isLoading}
                   className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full font-bold text-xs sm:text-sm text-white bg-gradient-to-r from-[#1a73e8] via-[#7c3aed] to-[#d946ef] hover:opacity-95 shadow-md shadow-indigo-500/20 active:scale-[0.98] transition-all cursor-pointer mt-2"
                 >
-                  <span>{isLoading ? 'Opening…' : isSignUp ? (accountType === 'company' ? 'Create Company Account' : 'Create Student Account') : accountType === 'company' ? 'Sign In to Post Jobs' : 'Sign In to Find Jobs'}</span>
+                  <span>{isLoading ? 'Opening…' : isSignUp ? 'Create Student Account' : 'Sign In to Find Jobs'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>

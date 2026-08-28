@@ -90,6 +90,14 @@ export interface AtsScanResult {
   atsPassProbability: string;
   isFallback?: boolean;
   source?: string;
+  resumeVerdict?: 'good' | 'fair' | 'weak';
+  resumeVerdictLabel?: string;
+  formatAdvice?: string[];
+  stageAdvice?: Array<{
+    stage: string;
+    status: 'good' | 'improve' | 'missing';
+    detail: string;
+  }>;
 }
 
 export interface Job {

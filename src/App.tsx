@@ -19,7 +19,6 @@ import { JobPortal } from './components/JobPortal';
 import { JobMatchModal } from './components/JobMatchModal';
 import { ClassroomGuideModal } from './components/ClassroomGuideModal';
 import { JobBoardAgent } from './components/JobBoardAgent';
-import { CompanyPostJob } from './components/CompanyPostJob';
 import { NotificationToast } from './components/NotificationToast';
 import { MOCK_JOBS } from './data/mockJobs';
 import { formatLinkedInPostedLine } from './lib/jobTime';
@@ -55,9 +54,7 @@ export default function App() {
   });
 
   // Navigation tab
-  const [currentTab, setCurrentTab] = useState<AppTab>(() =>
-    user?.accountType === 'company' ? 'post' : 'scanner'
-  );
+  const [currentTab, setCurrentTab] = useState<AppTab>('scanner');
 
   // Classroom Guide Modal state
   const [isClassroomGuideOpen, setIsClassroomGuideOpen] = useState(false);
@@ -190,7 +187,7 @@ export default function App() {
       if (prev.some((j) => j.id === liveJob.id)) return prev;
       return [liveJob, ...prev];
     });
-    if (!announce || user?.accountType === 'company') return;
+    if (!announce) return;
     const notifId = `live-${liveJob.id}`;
     const postedAt = liveJob.postedAt || Date.now();
     const when = liveJob.postedLabel || formatLinkedInPostedLine(postedAt);
@@ -335,7 +332,7 @@ export default function App() {
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
-    setCurrentTab(newUser.accountType === 'company' ? 'post' : 'scanner');
+    setCurrentTab('scanner');
     try {
       localStorage.setItem('ats_auth_user', JSON.stringify(newUser));
       const storedResume = localStorage.getItem(`ats_resume_${newUser.id}`);
@@ -660,19 +657,6 @@ export default function App() {
           </div>
         )}
 
-        {currentTab === 'post' && user?.accountType === 'company' && (
-          <div className="animate-in fade-in duration-300">
-            <CompanyPostJob
-              user={user}
-              mode={mode}
-              onPosted={(job) => ingestLiveJob(job, false)}
-              onBoardSynced={(report) => {
-                const live = report.jobs.filter((j) => String(j.id).startsWith('live-job-'));
-                setJobs([...live, ...MOCK_JOBS]);
-              }}
-            />
-          </div>
-        )}
 
       </main>
 

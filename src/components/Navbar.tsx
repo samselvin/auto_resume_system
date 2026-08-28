@@ -46,7 +46,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const isDark = currentMode === 'dark';
 
-  const isCompany = user?.accountType === 'company';
 
   const studentNav = [
     {
@@ -63,22 +62,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
   ];
 
-  const companyNav = [
-    {
-      id: 'post' as const,
-      label: 'Post Job',
-      icon: Zap,
-      badge: 'Instant',
-    },
-    {
-      id: 'jobs' as const,
-      label: 'Live Board',
-      icon: Briefcase,
-      badge: 'LIVE',
-    },
-  ];
 
-  const navItems = isCompany ? companyNav : studentNav;
+  const navItems = studentNav;
 
   return (
     <header 
