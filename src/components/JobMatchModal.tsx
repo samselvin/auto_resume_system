@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Job, JobMatchResult, ThemeMode } from '../types';
+import { hiringNeedsFromJob } from '../lib/resumeJobMatch';
+import { gmailComposeUrl, mailtoUrl, parseOutreachEmail } from '../lib/outreachTemplates';
 import {
   X,
   Sparkles,
@@ -38,6 +40,8 @@ interface JobMatchModalProps {
   onApply: (job: Job, notes?: string) => void;
   isApplied: boolean;
   mode?: ThemeMode;
+  candidateName?: string;
+  candidateEmail?: string;
 }
 
 export const JobMatchModal: React.FC<JobMatchModalProps> = ({
@@ -49,10 +53,13 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
   onApply,
   isApplied,
   mode = 'light',
+  candidateName,
+  candidateEmail,
 }) => {
   const [activeTab, setActiveTab] = useState<'match' | 'coverLetter' | 'coldEmail'>('match');
   const [copiedCoverLetter, setCopiedCoverLetter] = useState(false);
   const [copiedColdEmail, setCopiedColdEmail] = useState(false);
+  const [copiedSubject, setCopiedSubject] = useState(false);
   const [applyNotes, setApplyNotes] = useState('');
 
   if (!isOpen) return null;
@@ -67,11 +74,22 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
     }
   };
 
+  const parsedEmail = parseOutreachEmail(matchResult?.coldEmail || '');
+
   const handleCopyColdEmail = () => {
-    if (matchResult?.coldEmail) {
-      navigator.clipboard.writeText(matchResult.coldEmail);
+    const text = parsedEmail.body || matchResult?.coldEmail;
+    if (text) {
+      navigator.clipboard.writeText(text);
       setCopiedColdEmail(true);
       setTimeout(() => setCopiedColdEmail(false), 2000);
+    }
+  };
+
+  const handleCopySubject = () => {
+    if (parsedEmail.subject) {
+      navigator.clipboard.writeText(parsedEmail.subject);
+      setCopiedSubject(true);
+      setTimeout(() => setCopiedSubject(false), 2000);
     }
   };
 
@@ -97,6 +115,7 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
   const keyStrengths = (Array.isArray(matchResult?.keyStrengthsForRole) ? matchResult.keyStrengthsForRole : [])
     .filter((str) => !/see linkedin post/i.test(str));
   const recommendedActions = Array.isArray(matchResult?.recommendedActions) ? matchResult.recommendedActions : [];
+  const hiring = hiringNeedsFromJob(job);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -250,6 +269,62 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
                     )}
                   </div>
 
+                  {hiring.all.length > 0 && (
+                    <div className={`p-4 rounded-2xl border space-y-3 ${
+                      isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-white border-[#e3e3e3]'
+                    }`}>
+                      <span className="text-xs font-bold text-[#1a73e8] dark:text-[#8ab4f8] uppercase tracking-wider block">
+                        What this company wants to hire
+                      </span>
+                      <p className="text-[11px] text-[#747775]">
+                        Technical skills count 70% of the ATS score; non-technical skills count 30%
+                        {matchScore !== null ? ` · overall ${matchScore}%` : ''}.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold uppercase text-[#1a73e8] dark:text-[#8ab4f8]">Technical</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {hiring.technical.length === 0 && (
+                              <span className="text-xs text-[#747775]">
+                                None found in this post. Open LinkedIn About if the listing names a stack.
+                              </span>
+                            )}
+                            {hiring.technical.map((skill, i) => {
+                              const hit = matchedKeys.has(skill.toLowerCase().trim());
+                              return (
+                                <span key={i} className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                                  hit
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    : 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200'
+                                }`}>
+                                  {hit ? skill : `+${skill}`}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold uppercase text-violet-700 dark:text-violet-300">Non-technical</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {hiring.nonTechnical.length === 0 && <span className="text-xs text-[#747775]">None named</span>}
+                            {hiring.nonTechnical.map((skill, i) => {
+                              const hit = matchedKeys.has(skill.toLowerCase().trim());
+                              return (
+                                <span key={i} className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                                  hit
+                                    ? 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/60 dark:text-violet-300'
+                                    : 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200'
+                                }`}>
+                                  {hit ? skill : `+${skill}`}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Skills Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Matching skills */}
@@ -359,65 +434,116 @@ export const JobMatchModal: React.FC<JobMatchModalProps> = ({
               {/* VIEW 2: COVER LETTER */}
               {activeTab === 'coverLetter' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#747775]">
-                      Customized for {job.company} • {job.title}
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
+                        Ready-to-send cover letter
+                      </p>
+                      <span className="text-xs text-[#747775]">
+                        Written for {job.title} at {job.company}. Copy and paste into LinkedIn Easy Apply or attach as PDF.
+                      </span>
+                    </div>
                     <button
                       onClick={handleCopyCoverLetter}
-                      className="flex items-center gap-1 text-xs font-bold text-[#1a73e8] dark:text-[#8ab4f8] hover:underline cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-[#1a73e8] text-[#1a73e8] dark:text-[#8ab4f8] dark:border-[#8ab4f8] hover:bg-[#e8f0fe] dark:hover:bg-[#282a2c] cursor-pointer"
                     >
                       {copiedCoverLetter ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-emerald-600">Copied!</span>
+                          <span className="text-emerald-600">Copied — paste into the application</span>
                         </>
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Cover Letter</span>
+                          <span>Copy letter</span>
                         </>
                       )}
                     </button>
                   </div>
 
-                  <div className={`p-5 rounded-2xl border font-mono text-xs leading-relaxed whitespace-pre-wrap ${
-                    isDark ? 'bg-[#131314] border-[#37393b] text-[#e3e3e3]' : 'bg-[#f8fafd] border-[#e3e3e3] text-[#1f1f1f]'
-                  }`}>
+                  <div
+                    className={`p-6 rounded-2xl border text-sm leading-7 whitespace-pre-wrap ${
+                      isDark ? 'bg-[#131314] border-[#37393b] text-[#e3e3e3]' : 'bg-white border-[#e3e3e3] text-[#1f1f1f]'
+                    }`}
+                    style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                  >
                     {matchResult.coverLetter || 'Generating custom cover letter...'}
                   </div>
+                  <p className="text-[11px] text-[#747775]">
+                    Signed as {candidateName || 'your profile name'}
+                    {candidateEmail ? ` · ${candidateEmail}` : ''}. Edit one sentence if you have a referral name.
+                  </p>
                 </div>
               )}
 
-              {/* VIEW 3: COLD EMAIL */}
               {activeTab === 'coldEmail' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#747775]">
-                      1-Minute LinkedIn / Recruiter Outreach Template
+                  <div>
+                    <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
+                      Recruiter email — copy and send in one minute
+                    </p>
+                    <span className="text-xs text-[#747775]">
+                      Short enough for Gmail, Outlook, or a LinkedIn InMail. Subject line is already filled.
                     </span>
+                  </div>
+
+                  {parsedEmail.subject && (
+                    <div className={`p-3 rounded-xl border flex items-start justify-between gap-3 ${
+                      isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f8fafd] border-[#e3e3e3]'
+                    }`}>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-[#747775]">Subject</span>
+                        <p className={`text-xs font-semibold mt-0.5 ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
+                          {parsedEmail.subject}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleCopySubject}
+                        className="flex-shrink-0 text-[11px] font-bold text-[#1a73e8] dark:text-[#8ab4f8] cursor-pointer"
+                      >
+                        {copiedSubject ? 'Subject copied' : 'Copy subject'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={`p-5 rounded-2xl border text-sm leading-7 whitespace-pre-wrap ${
+                    isDark ? 'bg-[#131314] border-[#37393b] text-[#e3e3e3]' : 'bg-white border-[#e3e3e3] text-[#1f1f1f]'
+                  }`}>
+                    {parsedEmail.body || matchResult.coldEmail || 'Generating custom recruiter outreach email...'}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={handleCopyColdEmail}
-                      className="flex items-center gap-1 text-xs font-bold text-[#1a73e8] dark:text-[#8ab4f8] hover:underline cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full border border-[#1a73e8] text-[#1a73e8] dark:text-[#8ab4f8] dark:border-[#8ab4f8] hover:bg-[#e8f0fe] dark:hover:bg-[#282a2c] cursor-pointer"
                     >
                       {copiedColdEmail ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-emerald-600">Copied!</span>
+                          Copied body
                         </>
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Outreach Email</span>
+                          Copy email body
                         </>
                       )}
                     </button>
-                  </div>
-
-                  <div className={`p-5 rounded-2xl border font-mono text-xs leading-relaxed whitespace-pre-wrap ${
-                    isDark ? 'bg-[#131314] border-[#37393b] text-[#e3e3e3]' : 'bg-[#f8fafd] border-[#e3e3e3] text-[#1f1f1f]'
-                  }`}>
-                    {matchResult.coldEmail || 'Generating custom recruiter outreach email...'}
+                    <a
+                      href={gmailComposeUrl(parsedEmail.subject, parsedEmail.body)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full bg-[#1a73e8] text-white hover:opacity-95"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      Open in Gmail
+                    </a>
+                    <a
+                      href={mailtoUrl(parsedEmail.subject, parsedEmail.body)}
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full border border-[#dadce0] dark:border-[#37393b] text-[#444746] dark:text-[#c4c7c5]"
+                    >
+                      Open mail app
+                    </a>
                   </div>
                 </div>
               )}

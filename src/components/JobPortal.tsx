@@ -16,7 +16,7 @@ import { CompanyLogo } from './CompanyLogo';
 import { PostedTime } from './PostedTime';
 import { getPostedAt, isFreshPost } from '../lib/jobTime';
 import { getLinkedInApplyUrl } from '../lib/jobLinks';
-import { compareResumeToJob } from '../lib/resumeJobMatch';
+import { compareResumeToJob, hiringNeedsFromJob } from '../lib/resumeJobMatch';
 
 interface JobPortalProps {
   currentSalaryTier: SalaryTier;
@@ -63,11 +63,6 @@ export const JobPortal: React.FC<JobPortalProps> = ({
       count: jobs.length,
     },
   ];
-
-  const userHasSkill = (skill: string) => {
-    if (!resumeData?.text) return false;
-    return resumeData.text.toLowerCase().includes(skill.toLowerCase());
-  };
 
   const calculateMatchScore = (job: Job) => {
     if (typeof matchScores[job.id] === 'number') return matchScores[job.id];
@@ -323,7 +318,11 @@ export const JobPortal: React.FC<JobPortalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {filteredJobs.map((job) => {
             const isApplied = appliedJobIds.has(job.id);
-            const liveMatch = calculateMatchScore(job);
+            const liveBreakdown = resumeData?.text ? compareResumeToJob(resumeData.text, job) : null;
+            const liveMatch =
+              typeof matchScores[job.id] === 'number' ? matchScores[job.id] : liveBreakdown?.matchScore ?? null;
+            const matchedKeys = new Set((liveBreakdown?.matchedSkills || []).map((s) => s.toLowerCase()));
+            const hiring = hiringNeedsFromJob(job);
 
             return (
               <div
@@ -416,32 +415,75 @@ export const JobPortal: React.FC<JobPortalProps> = ({
                     </span>
                   </div>
 
-                  {/* Description snippet */}
-                  <p className={`text-xs line-clamp-2 mt-3 leading-relaxed ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
+                  <div className="mt-3.5 space-y-2.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[#747775]">
+                      What this company is hiring for
+                    </span>
+                    {hiring.all.length === 0 ? (
+                      <span className={`text-[11px] ${isDark ? 'text-[#8e918f]' : 'text-[#5f6368]'}`}>
+                        Open the LinkedIn post for the full requirement list.
+                      </span>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-[#1a73e8] dark:text-[#8ab4f8]">Technical</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {hiring.technical.length === 0 ? (
+                              <span className="text-[11px] text-[#747775]">
+                                No tech stack in this post — open LinkedIn for the full About.
+                              </span>
+                            ) : hiring.technical.map((skill, i) => {
+                              const matchedInResume = matchedKeys.has(skill.toLowerCase());
+                              return (
+                                <span
+                                  key={`t-${i}`}
+                                  className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                                    matchedInResume
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
+                                      : isDark
+                                      ? 'bg-[#131314] text-[#8e918f] border-[#37393b]'
+                                      : 'bg-[#f8fafd] text-[#5f6368] border-[#dadce0]'
+                                  }`}
+                                >
+                                  {matchedInResume && <Check className="w-3 h-3 text-emerald-600" />}
+                                  {skill}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300">Non-technical</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {hiring.nonTechnical.length === 0 ? (
+                              <span className="text-[11px] text-[#747775]">No soft skills called out</span>
+                            ) : hiring.nonTechnical.map((skill, i) => {
+                              const matchedInResume = matchedKeys.has(skill.toLowerCase());
+                              return (
+                                <span
+                                  key={`s-${i}`}
+                                  className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                                    matchedInResume
+                                      ? 'bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/40'
+                                      : isDark
+                                      ? 'bg-[#131314] text-[#8e918f] border-[#37393b]'
+                                      : 'bg-[#f8fafd] text-[#5f6368] border-[#dadce0]'
+                                  }`}
+                                >
+                                  {matchedInResume && <Check className="w-3 h-3 text-violet-600" />}
+                                  {skill}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <p className={`text-xs line-clamp-3 mt-3 leading-relaxed ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
                     {job.description}
                   </p>
-
-                  {/* Skills Badges */}
-                  <div className="mt-3.5 flex flex-wrap gap-1.5">
-                    {job.skills.map((skill, i) => {
-                      const matchedInResume = userHasSkill(skill);
-                      return (
-                        <span
-                          key={i}
-                          className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
-                            matchedInResume
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
-                              : isDark
-                              ? 'bg-[#131314] text-[#8e918f] border-[#37393b]'
-                              : 'bg-[#f8fafd] text-[#5f6368] border-[#dadce0]'
-                          }`}
-                        >
-                          {matchedInResume && <Check className="w-3 h-3 text-emerald-600" />}
-                          {skill}
-                        </span>
-                      );
-                    })}
-                  </div>
                 </div>
 
                 {/* Card Actions */}

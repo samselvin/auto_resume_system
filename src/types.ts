@@ -105,6 +105,8 @@ export interface Job {
   experience: string;
   experienceTier: '0-2 Yrs' | '2-5 Yrs' | '5+ Yrs';
   skills: string[];
+  technicalSkills?: string[];
+  nonTechnicalSkills?: string[];
   tags: string[];
   description: string;
   responsibilities: string[];

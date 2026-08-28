@@ -1,4 +1,5 @@
 import { Job } from '../types';
+import { hiringNeedsFromJob, requiredSectionFromAbout } from './resumeJobMatch';
 
 export type LinkedInGuestCard = {
   jobId: string;
@@ -10,6 +11,10 @@ export type LinkedInGuestCard = {
   postedLabel?: string;
   applyClicks?: number;
   activelyHiring: boolean;
+  aboutText?: string;
+  skills?: string[];
+  workplaceType?: Job['workplaceType'];
+  experienceLabel?: string;
 };
 
 const IMPORTANT_COMPANIES = [
@@ -270,22 +275,73 @@ function logoForCompany(company: string): string | undefined {
   return hit ? `https://logo.clearbit.com/${hit[1]}` : undefined;
 }
 
-function inferExperienceTier(title: string): Job['experienceTier'] {
-  const t = title.toLowerCase();
-  if (/\b(intern|graduate|campus|junior|trainee|i\b|sde[- ]?1)\b/.test(t)) return '0-2 Yrs';
-  if (/\b(iii|3|staff|principal|lead|senior staff)\b/.test(t)) return '5+ Yrs';
+function inferExperienceTier(blob: string): Job['experienceTier'] {
+  const years = blob.match(/(\d+)\+?\s*years?\s+(?:of\s+)?(?:applied\s+)?experience/i);
+  if (years) {
+    const n = Number(years[1]);
+    if (n <= 2) return '0-2 Yrs';
+    if (n >= 5) return '5+ Yrs';
+    return '2-5 Yrs';
+  }
+  const t = blob.toLowerCase();
+  if (/\b(intern|graduate|campus|junior|trainee|sde[- ]?1)\b/.test(t)) return '0-2 Yrs';
+  if (/\b(staff|principal|lead|senior staff)\b/.test(t)) return '5+ Yrs';
   return '2-5 Yrs';
 }
 
-function inferSkills(title: string): string[] {
-  const t = title.toLowerCase();
-  const skills: string[] = [];
-  if (/\bai\b|genai|ml\b|machine learning/.test(t)) skills.push('AI');
-  if (/backend|sde|software/.test(t)) skills.push('Software Engineering');
-  if (/frontend|react/.test(t)) skills.push('Frontend');
-  if (/java\b/.test(t)) skills.push('Java');
-  if (/python/.test(t)) skills.push('Python');
-  return skills.length ? skills : ['Software Engineering'];
+function inferHiringNeeds(title: string, aboutText?: string) {
+  return hiringNeedsFromJob({ title, description: aboutText || '' });
+}
+
+function htmlBlockToText(html: string): string {
+  return stripTags(
+    html
+      .replace(/<\/(p|div|h\d|li|ul|ol)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<li[^>]*>/gi, '• ')
+  )
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function parseAboutHtml(html: string): string {
+  const markup = html.match(/show-more-less-html__markup[^>]*>([\s\S]*?)<\/div>/i)?.[1];
+  if (markup) return htmlBlockToText(markup);
+  const desc = html.match(/description__text[\s\S]*?show-more-less-html__markup[^>]*>([\s\S]*?)<\/div>/i)?.[1];
+  if (desc) return htmlBlockToText(desc);
+  const core = html.match(/core-section-container__content[^>]*>([\s\S]*?)<\/div>/i)?.[1];
+  return core ? htmlBlockToText(core) : '';
+}
+
+function parseCriteria(html: string, label: string): string | undefined {
+  const re = new RegExp(
+    `description__job-criteria-subheader[^>]*>\\s*${label}\\s*<\\/h3>\\s*<span[^>]*>\\s*([^<]+)`,
+    'i'
+  );
+  const value = stripTags(html.match(re)?.[1] || '');
+  return value || undefined;
+}
+
+function parseWorkplace(title: string, about: string, location: string): Job['workplaceType'] {
+  const blob = `${title} ${about} ${location}`;
+  if (/\bhybrid\b/i.test(blob)) return 'Hybrid';
+  if (/\bremote\b/i.test(blob)) return 'Remote';
+  return 'On-site';
+}
+
+function parseExperienceLabel(about: string, seniority?: string): string {
+  const years = about.match(/(\d+)\+?\s*years?\s+(?:of\s+)?(?:applied\s+)?experience/i);
+  if (years) return `${years[1]}+ years experience`;
+  if (seniority && !/not applicable/i.test(seniority)) return seniority;
+  return 'See LinkedIn post';
+}
+
+function snippetAbout(about: string): string {
+  const required = requiredSectionFromAbout(about);
+  const prefer = required.length > 80 ? required : about;
+  const cleaned = prefer.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= 900) return cleaned;
+  return `${cleaned.slice(0, 897).trim()}…`;
 }
 
 export function guestCardToJob(card: LinkedInGuestCard): Job {
@@ -296,6 +352,7 @@ export function guestCardToJob(card: LinkedInGuestCard): Job {
   const tags = ['LinkedIn'];
   if (isNew) tags.push('New');
   if (important) tags.push('Important');
+  const hiring = inferHiringNeeds(card.title, card.aboutText);
   return {
     id: `live-job-li-${card.jobId}`,
     title: card.title,
@@ -305,13 +362,16 @@ export function guestCardToJob(card: LinkedInGuestCard): Job {
     salaryLpa: 'See LinkedIn post',
     salaryTier: '12-20 LPA',
     location: card.location,
-    workplaceType: /remote/i.test(card.title) ? 'Remote' : 'On-site',
-    experience: 'See LinkedIn post',
-    experienceTier: inferExperienceTier(card.title),
-    skills: inferSkills(card.title),
+    workplaceType: card.workplaceType || parseWorkplace(card.title, card.aboutText || '', card.location),
+    experience: card.experienceLabel || 'See LinkedIn post',
+    experienceTier: inferExperienceTier(`${card.title} ${card.experienceLabel || ''} ${card.aboutText || ''}`),
+    skills: hiring.all,
+    technicalSkills: hiring.technical,
+    nonTechnicalSkills: hiring.nonTechnical,
     tags,
-    description:
-      'Pulled from a live LinkedIn job post. Open LinkedIn for pay, dates, and requirements — this card does not invent them.',
+    description: card.aboutText
+      ? snippetAbout(card.aboutText)
+      : 'Pulled from a live LinkedIn job post. Open LinkedIn for pay, dates, and requirements — this card does not invent them.',
     responsibilities: [`Apply on the LinkedIn job post (job id ${card.jobId}).`],
     perks: [],
     postedDaysAgo: 0,
@@ -335,20 +395,26 @@ const LI_HEADERS = {
 
 async function enrichFromJobView(card: LinkedInGuestCard): Promise<LinkedInGuestCard> {
   try {
-    const res = await fetch(card.url, {
+    const guestUrl = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${card.jobId}`;
+    const res = await fetch(guestUrl, {
       headers: LI_HEADERS,
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) return card;
-    const head = (await res.text()).slice(0, 16000);
-    const postedLabel = firstRelativeLabel(head) || card.postedLabel;
-    const applyClicks = parseApplyClicks(head) ?? card.applyClicks;
+    const html = await res.text();
+    const aboutText = parseAboutHtml(html);
+    const postedLabel = firstRelativeLabel(html) || card.postedLabel;
+    const applyClicks = parseApplyClicks(html) ?? card.applyClicks;
     const fromRelative = postedLabel ? relativeToMsAgo(postedLabel) : null;
+    const seniority = parseCriteria(html, 'Seniority level');
     return {
       ...card,
       postedLabel,
       applyClicks,
       listedAt: fromRelative != null ? Date.now() - fromRelative : card.listedAt,
+      aboutText: aboutText || card.aboutText,
+      workplaceType: parseWorkplace(card.title, aboutText, card.location),
+      experienceLabel: parseExperienceLabel(aboutText, seniority),
     };
   } catch {
     return card;

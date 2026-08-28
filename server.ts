@@ -8,6 +8,7 @@ import { MOCK_JOBS } from "./src/data/mockJobs";
 import { inspectDraft, inspectJob, runJobBoardAgent } from "./src/lib/jobBoardAgent";
 import { fetchImportantLinkedInJobs, isAgentLinkedInJobId } from "./src/lib/linkedinGuestFeed";
 import { compareResumeToJob } from "./src/lib/resumeJobMatch";
+import { buildStudentOutreach } from "./src/lib/outreachTemplates";
 
 dotenv.config();
 
@@ -152,6 +153,8 @@ function generateFallbackJobMatch(resumeText: string, job: any) {
     ? `Your resume matches ${matchScore}% of the listed requirements for ${job.title || "this role"} at ${job.company || "the company"}.`
     : `Upload your resume in ATS Scanner, then compare again for a personalized match score.`;
 
+  const outreach = buildStudentOutreach({ job, resumeText: resumeText || "" });
+
   return {
     jobId: job.id || "job-1",
     matchScore,
@@ -167,8 +170,8 @@ function generateFallbackJobMatch(resumeText: string, job: any) {
     recommendedActions: missingSkills.length
       ? [`Add evidence for ${missingSkills.slice(0, 3).join(", ")} if you have that experience.`, `Mirror wording from the ${job.company || "company"} LinkedIn post.`]
       : ["Quantify outcomes in your strongest bullets.", `Tailor the summary to ${job.company || "the company"}.`],
-    coverLetter: `Dear Hiring Manager at ${job.company || "the company"},\n\nI am applying for ${job.title || "the role"}. My resume matches ${matchScore}% of the listed requirements${matchedSkills.length ? `, including ${matchedSkills.slice(0, 3).join(", ")}` : ""}.\n\nSincerely,\nCandidate`,
-    coldEmail: `Subject: Application: ${job.title || "Software Engineer"}\n\nHi [Hiring Team],\n\nI am applying for ${job.title || "the role"} at ${job.company || "your team"}. Resume match vs listed requirements: ${matchScore}%.\n\nBest regards,\n[Your Name]`,
+    coverLetter: outreach.coverLetter,
+    coldEmail: outreach.coldEmail,
   };
 }
 

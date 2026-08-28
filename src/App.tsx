@@ -26,6 +26,7 @@ import { formatLinkedInPostedLine } from './lib/jobTime';
 import { openLinkedInApply } from './lib/jobLinks';
 import { isGoogleEmail } from './lib/googleEmail';
 import { compareResumeToJob } from './lib/resumeJobMatch';
+import { buildStudentOutreach } from './lib/outreachTemplates';
 import confetti from 'canvas-confetti';
 
 export default function App() {
@@ -406,6 +407,7 @@ export default function App() {
 
     const resumeContent = resumeData?.text || '';
     const localMatch = compareResumeToJob(resumeContent, job);
+    const outreach = buildStudentOutreach({ job, resumeText: resumeContent, user });
 
     try {
       const response = await fetch('/api/job-match', {
@@ -448,8 +450,8 @@ export default function App() {
             recommendedActions: missingSkills.length
               ? [`Add evidence for ${missingSkills.slice(0, 3).join(', ')} if you have that experience.`]
               : ['Quantify outcomes in your strongest bullets.'],
-            coverLetter: data.coverLetter || `Dear Hiring Manager,\n\nI am writing to apply for ${job.title} at ${job.company}. Resume match: ${matchScore}%.\n\nSincerely,\nCandidate`,
-            coldEmail: data.coldEmail || `Subject: Application for ${job.title}\n\nHi,\n\nI am applying for ${job.title} at ${job.company}. Resume match: ${matchScore}%.\n\nBest regards,\n[Your Name]`,
+            coverLetter: outreach.coverLetter,
+            coldEmail: outreach.coldEmail,
           });
           return;
         }
@@ -471,8 +473,8 @@ export default function App() {
         recommendedActions: localMatch.missingSkills.length
           ? [`Add evidence for ${localMatch.missingSkills.slice(0, 3).join(', ')} if you have that experience.`]
           : ['Quantify outcomes in your strongest bullets.'],
-        coverLetter: `Dear Hiring Manager at ${job.company},\n\nI am applying for ${job.title}. Resume match vs listed requirements: ${localMatch.matchScore}%.\n\nSincerely,\nCandidate`,
-        coldEmail: `Subject: Application: ${job.title}\n\nHi [Hiring Team],\n\nI am applying for ${job.title} at ${job.company}. Resume match: ${localMatch.matchScore}%.\n\nBest regards,\n[Your Name]`
+        coverLetter: outreach.coverLetter,
+        coldEmail: outreach.coldEmail,
       });
     } catch (error) {
       console.error('Error matching job:', error);
@@ -488,8 +490,8 @@ export default function App() {
         recommendation: `Resume match score: ${localMatch.matchScore}%.`,
         keyStrengthsForRole: localMatch.matchedSkills.length ? [`Resume includes ${localMatch.matchedSkills.join(', ')}.`] : ['Add core role keywords to your resume.'],
         recommendedActions: localMatch.missingSkills.length ? [`Add ${localMatch.missingSkills.join(', ')} if you have that experience.`] : ['Quantify outcomes in your strongest bullets.'],
-        coverLetter: `Dear Hiring Manager at ${job.company},\n\nI am applying for ${job.title}.\n\nSincerely,\nCandidate`,
-        coldEmail: `Subject: Application: ${job.title}\n\nHi Team,\n\nI am interested in ${job.title} at ${job.company}.\n\nBest regards,\n[Your Name]`
+        coverLetter: outreach.coverLetter,
+        coldEmail: outreach.coldEmail,
       });
     } finally {
       setIsMatchingJob(false);
@@ -687,6 +689,8 @@ export default function App() {
           }}
           isApplied={appliedJobIds.has(selectedJobForMatch.id)}
           mode={mode}
+          candidateName={user?.name}
+          candidateEmail={user?.email}
         />
       )}
 
