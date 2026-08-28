@@ -1,7 +1,6 @@
 import express, { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { MOCK_JOBS } from "./src/data/mockJobs";
@@ -136,9 +135,7 @@ app.post("/api/optimize-bullet", (req: Request, res: Response) => {
   }
 });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const LIVE_JOBS_PATH = path.join(__dirname, "data", "posted-jobs.json");
+const LIVE_JOBS_PATH = path.join(process.cwd(), "data", "posted-jobs.json");
 
 type SseClient = Response;
 const sseClients = new Set<SseClient>();

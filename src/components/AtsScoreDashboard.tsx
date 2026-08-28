@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AtsScanResult, ThemeMode } from '../types';
 import {
   Award,
+  AlertCircle,
   CheckCircle2,
   AlertTriangle,
   Zap,
