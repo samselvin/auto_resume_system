@@ -21,7 +21,8 @@ import {
   Database,
   Cloud,
   Wrench,
-  AlertCircle
+  XCircle,
+  FileWarning,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -42,11 +43,9 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
   const score = scanResult.overallScore;
 
   const getScoreBadge = (val: number) => {
-    if (val >= 90) return { label: 'Top 5% ATS Ready (Enterprise Tier)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50' };
-    if (val >= 80) return { label: 'Strong Candidate (Passes 90%+ ATS Filters)', color: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50' };
-    if (val >= 70) return { label: 'Competitive (Minor Keywords Missing)', color: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/50' };
-    if (val >= 55) return { label: 'Needs Keyword Optimization', color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50' };
-    return { label: 'Critical ATS Gaps Detected', color: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50' };
+    if (val >= 75) return { label: 'Good resume (ATS-ready with small gaps)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50' };
+    if (val >= 55) return { label: 'Fair resume — improve the weak stage below', color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50' };
+    return { label: 'Weak resume — change format, then add skills', color: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50' };
   };
 
   const handleCopyKeyword = (kw: string) => {
@@ -71,21 +70,10 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
     { key: 'atsParseability', label: 'Enterprise ATS Pass Rate', value: scanResult.categoryScores.atsParseability, desc: 'Taleo, Greenhouse & Workday readiness' },
   ];
 
-  const catSkills = scanResult.categorizedSkills || {
-    frontend: scanResult.detectedSkills.filter(s => ['REACT', 'TYPESCRIPT', 'JAVASCRIPT', 'TAILWIND', 'HTML', 'CSS', 'NEXT', 'VUE', 'ANGULAR'].some(k => s.toUpperCase().includes(k))),
-    backend: scanResult.detectedSkills.filter(s => ['NODE', 'EXPRESS', 'PYTHON', 'JAVA', 'POSTGRES', 'SQL', 'MONGO', 'REST', 'GRAPHQL', 'GOLANG'].some(k => s.toUpperCase().includes(k))),
-    cloud: scanResult.detectedSkills.filter(s => ['AWS', 'DOCKER', 'KUBERNETES', 'CI/CD', 'LINUX', 'GCP', 'AZURE', 'GIT'].some(k => s.toUpperCase().includes(k))),
-    tools: scanResult.detectedSkills.filter(s => ['REDIS', 'KAFKA', 'JEST', 'POSTMAN', 'FIGMA', 'WEBPACK', 'VITE'].some(k => s.toUpperCase().includes(k))),
-  };
+  const catSkills = scanResult.categorizedSkills || { frontend: [], backend: [], cloud: [], tools: [] };
 
-  const complianceList = scanResult.complianceChecks || [
-    { name: "Single-Column ATS Readability", status: "pass" as const, detail: "Clean linear flow without multi-column table collisions." },
-    { name: "Standard Font & Section Headers", status: "pass" as const, detail: "Standard sections detected (Skills, Experience, Education, Projects)." },
-    { name: "Quantified Accomplishments", status: "pass" as const, detail: "High density of metrics, percentages, and business impact." },
-    { name: "Contact & Header Visibility", status: "pass" as const, detail: "Phone, email, and social profile links clearly positioned." },
-    { name: "Action Verb Sentence Starters", status: "pass" as const, detail: "Bullets start with decisive power verbs." },
-    { name: "File Format & Table Safety", status: "pass" as const, detail: "Compatible with modern ATS engines (Taleo, Greenhouse, Workday)." },
-  ];
+  const complianceList = scanResult.complianceChecks || [];
+  const passedChecks = complianceList.filter((c) => c.status === 'pass').length;
 
   return (
     <div id="ats-score-dashboard" className="space-y-6">
@@ -194,9 +182,14 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
 
             <div className="mt-2">
               <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${getScoreBadge(score).color}`}>
-                {getScoreBadge(score).label}
+                {scanResult.resumeVerdict === 'good' ? 'Good' : scanResult.resumeVerdict === 'fair' ? 'Fair' : scanResult.resumeVerdict === 'weak' ? 'Weak' : getScoreBadge(score).label}
               </span>
             </div>
+            {scanResult.resumeVerdictLabel && (
+              <p className={`mt-2 text-xs max-w-xs ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
+                {scanResult.resumeVerdictLabel}
+              </p>
+            )}
 
             {score >= 80 && (
               <button
@@ -242,10 +235,10 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                     <Code2 className="w-3.5 h-3.5 text-[#1a73e8]" />
                     Hard Tech Skills Match
                   </span>
-                  <span className="font-bold text-[#1a73e8] dark:text-[#8ab4f8]">{scanResult.hardSkillsScore || 85}%</span>
+                  <span className="font-bold text-[#1a73e8] dark:text-[#8ab4f8]">{scanResult.hardSkillsScore}%</span>
                 </div>
                 <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-[#282a2c]' : 'bg-[#e3e3e3]'}`}>
-                  <div className="h-full rounded-full bg-gradient-to-r from-[#1a73e8] to-[#7c3aed]" style={{ width: `${scanResult.hardSkillsScore || 85}%` }} />
+                  <div className="h-full rounded-full bg-gradient-to-r from-[#1a73e8] to-[#7c3aed]" style={{ width: `${scanResult.hardSkillsScore}%` }} />
                 </div>
               </div>
 
@@ -255,10 +248,10 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                     <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                     Soft & Leadership Verbs
                   </span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{scanResult.softSkillsScore || 88}%</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{scanResult.softSkillsScore}%</span>
                 </div>
                 <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-[#282a2c]' : 'bg-[#e3e3e3]'}`}>
-                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width: `${scanResult.softSkillsScore || 88}%` }} />
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width: `${scanResult.softSkillsScore}%` }} />
                 </div>
               </div>
             </div>
@@ -329,11 +322,12 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                 <span>Frontend</span>
               </div>
               <div className="flex flex-wrap gap-1">
-                {(catSkills.frontend.length > 0 ? catSkills.frontend : ['REACT', 'TYPESCRIPT', 'TAILWIND']).map((s, i) => (
+                {(catSkills.frontend.length > 0 ? catSkills.frontend : []).map((s, i) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#e8f0fe] text-[#1a73e8] font-semibold">
                     {s}
                   </span>
                 ))}
+                {catSkills.frontend.length === 0 && <span className="text-[10px] text-[#747775]">None found</span>}
               </div>
             </div>
 
@@ -343,11 +337,12 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                 <span>Backend</span>
               </div>
               <div className="flex flex-wrap gap-1">
-                {(catSkills.backend.length > 0 ? catSkills.backend : ['NODE.JS', 'POSTGRESQL', 'REST']).map((s, i) => (
+                {catSkills.backend.map((s, i) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold dark:bg-emerald-950/40 dark:text-emerald-300">
                     {s}
                   </span>
                 ))}
+                {catSkills.backend.length === 0 && <span className="text-[10px] text-[#747775]">None found</span>}
               </div>
             </div>
 
@@ -357,11 +352,12 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                 <span>Cloud & DevOps</span>
               </div>
               <div className="flex flex-wrap gap-1">
-                {(catSkills.cloud.length > 0 ? catSkills.cloud : ['GIT', 'DOCKER', 'LINUX']).map((s, i) => (
+                {catSkills.cloud.map((s, i) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 font-semibold dark:bg-sky-950/40 dark:text-sky-300">
                     {s}
                   </span>
                 ))}
+                {catSkills.cloud.length === 0 && <span className="text-[10px] text-[#747775]">None found</span>}
               </div>
             </div>
 
@@ -371,11 +367,12 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                 <span>Tools & DBs</span>
               </div>
               <div className="flex flex-wrap gap-1">
-                {(catSkills.tools.length > 0 ? catSkills.tools : ['POSTMAN', 'JEST', 'REDIS']).map((s, i) => (
+                {catSkills.tools.map((s, i) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold dark:bg-amber-950/40 dark:text-amber-300">
                     {s}
                   </span>
                 ))}
+                {catSkills.tools.length === 0 && <span className="text-[10px] text-[#747775]">None found</span>}
               </div>
             </div>
           </div>
@@ -387,11 +384,14 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="w-4 h-4" />
-                <span>High-Impact Missing Keywords (Click to Copy)</span>
+                <span>Missing skills to add (only if you have used them)</span>
               </div>
-              <span className="text-[10px] text-[#747775]">Add to boost score</span>
+              <span className="text-[10px] text-[#747775]">Click to copy</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
+              {scanResult.missingKeywords.length === 0 && (
+                <span className="text-xs text-[#747775]">No core campus skill gaps detected.</span>
+              )}
               {scanResult.missingKeywords.map((kw, i) => {
                 const isCopied = copiedKeyword === kw;
                 return (
@@ -418,7 +418,9 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               ATS Compliance & Formatting Audit
             </h3>
-            <span className="text-xs text-emerald-600 font-bold">Passed</span>
+            <span className={`text-xs font-bold ${passedChecks === complianceList.length ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {passedChecks}/{complianceList.length || 0} passed
+            </span>
           </div>
 
           <div className="space-y-2.5">
@@ -431,6 +433,8 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
               >
                 {check.status === 'pass' ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                ) : check.status === 'fail' ? (
+                  <XCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
                 ) : (
                   <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 )}
@@ -440,7 +444,7 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                       {check.name}
                     </span>
                     <span className={`text-[10px] px-2 py-0.2 rounded-full font-bold uppercase ${
-                      check.status === 'pass' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                      check.status === 'pass' ? 'bg-emerald-100 text-emerald-800' : check.status === 'fail' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
                     }`}>
                       {check.status}
                     </span>
@@ -454,6 +458,72 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {(scanResult.stageAdvice?.length || scanResult.improvementAreas?.length) ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className={`lg:col-span-7 rounded-3xl p-6 sm:p-7 border shadow-sm space-y-3 ${
+            isDark ? 'bg-[#1e1f20] border-[#37393b]' : 'bg-white border-[#e3e3e3]'
+          }`}>
+            <h3 className={`text-sm font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
+              <FileWarning className="w-4 h-4 text-amber-600" />
+              Improve these stages
+            </h3>
+            <div className="space-y-2">
+              {(scanResult.stageAdvice || []).map((stage) => (
+                <div key={stage.stage} className={`p-3 rounded-2xl border ${isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f8fafd] border-[#e3e3e3]'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                      stage.status === 'good' ? 'bg-emerald-100 text-emerald-800' : stage.status === 'improve' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {stage.status === 'good' ? 'Good' : stage.status === 'improve' ? 'Improve this stage' : 'Missing'}
+                    </span>
+                    <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>{stage.stage}</span>
+                  </div>
+                  <p className="text-[11px] text-[#5f6368] dark:text-[#8e918f] leading-snug">{stage.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={`lg:col-span-5 rounded-3xl p-6 sm:p-7 border shadow-sm space-y-3 ${
+            isDark ? 'bg-[#1e1f20] border-[#37393b]' : 'bg-white border-[#e3e3e3]'
+          }`}>
+            <h3 className={`text-sm font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
+              <Zap className="w-4 h-4 text-[#1a73e8]" />
+              What to change on the resume
+            </h3>
+            <ul className="space-y-2">
+              {scanResult.improvementAreas.map((item, i) => (
+                <li key={i} className={`text-xs leading-relaxed ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            {scanResult.formatAdvice?.length ? (
+              <div className="pt-2 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-[#747775]">Format</span>
+                {scanResult.formatAdvice.map((item, i) => (
+                  <p key={i} className="text-[11px] text-[#5f6368] dark:text-[#8e918f]">{item}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {scanResult.bulletSuggestions?.length ? (
+        <div className={`rounded-3xl p-6 sm:p-7 border shadow-sm space-y-3 ${
+          isDark ? 'bg-[#1e1f20] border-[#37393b]' : 'bg-white border-[#e3e3e3]'
+        }`}>
+          <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>Rewrite weak bullets</h3>
+          {scanResult.bulletSuggestions.map((b, i) => (
+            <div key={i} className={`p-3 rounded-2xl border space-y-1.5 ${isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f8fafd] border-[#e3e3e3]'}`}>
+              <p className="text-[11px] text-[#747775] line-through">{b.original}</p>
+              <p className={`text-xs font-medium ${isDark ? 'text-[#e3e3e3]' : 'text-[#1f1f1f]'}`}>{b.improved}</p>
+              <p className="text-[10px] text-[#5f6368] dark:text-[#8e918f]">{b.reasoning}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {/* 4. Category Score Breakdown */}
       <div className={`rounded-3xl p-6 sm:p-7 border shadow-sm space-y-4 ${

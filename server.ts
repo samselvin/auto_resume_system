@@ -9,6 +9,7 @@ import { inspectDraft, inspectJob, runJobBoardAgent } from "./src/lib/jobBoardAg
 import { fetchImportantLinkedInJobs, isAgentLinkedInJobId } from "./src/lib/linkedinGuestFeed";
 import { compareResumeToJob } from "./src/lib/resumeJobMatch";
 import { buildStudentOutreach } from "./src/lib/outreachTemplates";
+import { scanResume } from "./src/lib/atsResumeScan";
 
 dotenv.config();
 
@@ -18,130 +19,7 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: "15mb" }));
 
 function generateFallbackScan(resumeText: string) {
-  const words = resumeText.toLowerCase().split(/\s+/);
-  const wordCount = words.length;
-
-  // Extract Name (first line or before contact)
-  const lines = resumeText.split("\n").map((l) => l.trim()).filter(Boolean);
-  const firstLine = lines[0] || "Candidate";
-  const candidateName = firstLine.length < 40 && !firstLine.includes("@") ? firstLine : "Tech Candidate";
-
-  // Extract contact items
-  const emailMatch = resumeText.match(/[\w.-]+@[\w.-]+\.\w+/);
-  const phoneMatch = resumeText.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\+91\s?\d{5}\s?\d{5}/);
-  const linkedinMatch = resumeText.match(/(?:linkedin\.com\/in\/[\w-]+)/i);
-  const githubMatch = resumeText.match(/(?:github\.com\/[\w-]+)/i);
-
-  const candidateContact = {
-    email: emailMatch ? emailMatch[0] : "candidate@email.com",
-    phone: phoneMatch ? phoneMatch[0] : "+91 98765 43210",
-    location: resumeText.includes("Bengaluru") ? "Bengaluru, KA" : resumeText.includes("Hyderabad") ? "Hyderabad, TS" : resumeText.includes("Pune") ? "Pune, MH" : "India / Remote",
-    linkedin: linkedinMatch ? linkedinMatch[0] : "linkedin.com/in/candidate",
-    github: githubMatch ? githubMatch[0] : "github.com/candidate-dev"
-  };
-
-  // Extract education
-  const hasBTech = resumeText.match(/B\.?Tech|Bachelor|B\.?E\.?|M\.?Tech|Master|MCA|BCA/i);
-  const candidateEducation = {
-    degree: hasBTech ? hasBTech[0] + " in Computer Science" : "Bachelor of Technology",
-    institution: resumeText.includes("NIT") ? "National Institute of Technology" : resumeText.includes("IIT") ? "Indian Institute of Technology" : "Engineering Institute",
-    year: "2019 - 2023",
-    grade: "8.5 / 10 CGPA"
-  };
-
-  const frontendSkills = ["react", "typescript", "javascript", "tailwind css", "next.js", "html5", "css3", "redux", "vite", "vue", "angular"].filter((s) => resumeText.toLowerCase().includes(s));
-  const backendSkills = ["node.js", "express", "python", "java", "postgresql", "mongodb", "rest api", "graphql", "sql", "golang", "fastapi"].filter((s) => resumeText.toLowerCase().includes(s));
-  const cloudSkills = ["aws", "docker", "kubernetes", "ci/cd", "linux", "gcp", "azure", "git"].filter((s) => resumeText.toLowerCase().includes(s));
-  const toolsSkills = ["redis", "kafka", "jest", "postman", "figma", "webpack", "jira", "microservices"].filter((s) => resumeText.toLowerCase().includes(s));
-
-  const allFound = [...new Set([...frontendSkills, ...backendSkills, ...cloudSkills, ...toolsSkills])];
-  const missingTech = ["Docker", "Kubernetes", "AWS Cloud", "GraphQL", "Redis Caching", "CI/CD Actions", "System Design", "Kafka"].filter(
-    (m) => !resumeText.toLowerCase().includes(m.toLowerCase())
-  ).slice(0, 6);
-
-  const actionVerbs = [
-    "engineered", "architected", "optimized", "spearheaded", "accelerated",
-    "reduced", "increased", "developed", "deployed", "scaled", "automated"
-  ];
-  const foundVerbs = actionVerbs.filter((v) => resumeText.toLowerCase().includes(v));
-  const hasNumbers = (resumeText.match(/\d+[\%|x|k|m|ms|s|\+]?/gi) || []).length;
-
-  let baseScore = 65;
-  if (allFound.length > 5) baseScore += 10;
-  if (allFound.length > 10) baseScore += 8;
-  if (foundVerbs.length >= 3) baseScore += 8;
-  if (hasNumbers >= 4) baseScore += 6;
-  const overallScore = Math.min(Math.max(baseScore, 55), 95);
-
-  const hardSkillsScore = Math.min(96, Math.max(50, allFound.length * 7 + 30));
-  const softSkillsScore = Math.min(94, Math.max(55, foundVerbs.length * 8 + 45));
-
-  const complianceChecks: { name: string; status: "pass" | "warning" | "fail"; detail: string }[] = [
-    { name: "Single-Column ATS Readability", status: "pass", detail: "Clean linear flow without unparseable multi-column tables." },
-    { name: "Standard Font & Section Headers", status: "pass", detail: "Standard sections detected (Skills, Experience, Education, Projects)." },
-    { name: "Quantified Accomplishments", status: hasNumbers >= 3 ? "pass" : "warning", detail: hasNumbers >= 3 ? "High density of metrics, percentages, and business impact." : "Add more quantified outcomes (e.g. reduced latency by X%)." },
-    { name: "Contact & Header Visibility", status: "pass", detail: "Phone, email, and social profile links clearly positioned." },
-    { name: "Action Verb Sentence Starters", status: foundVerbs.length >= 3 ? "pass" : "warning", detail: foundVerbs.length >= 3 ? "Bullets start with decisive power verbs." : "Replace passive verbs (helped, worked) with strong action verbs." },
-    { name: "File Format & Table Safety", status: "pass", detail: "Compatible with modern ATS engines (Taleo, Greenhouse, Workday)." },
-  ];
-
-  return {
-    overallScore,
-    candidateName,
-    candidateContact,
-    candidateEducation,
-    experienceYears: wordCount > 400 ? "3+ Years Experience" : "0 - 2 Years (Early Career)",
-    hardSkillsScore,
-    softSkillsScore,
-    categorizedSkills: {
-      frontend: frontendSkills.length > 0 ? frontendSkills.map((s) => s.toUpperCase()) : ["REACT", "JAVASCRIPT", "TAILWIND CSS", "HTML5"],
-      backend: backendSkills.length > 0 ? backendSkills.map((s) => s.toUpperCase()) : ["NODE.JS", "REST API", "POSTGRESQL", "EXPRESS"],
-      cloud: cloudSkills.length > 0 ? cloudSkills.map((s) => s.toUpperCase()) : ["GIT", "DOCKER", "LINUX", "AWS"],
-      tools: toolsSkills.length > 0 ? toolsSkills.map((s) => s.toUpperCase()) : ["POSTMAN", "JEST", "REDIS", "FIGMA"],
-    },
-    complianceChecks,
-    categoryScores: {
-      keywordMatch: Math.min(96, 62 + allFound.length * 3),
-      formatting: 92,
-      impactMetrics: Math.min(94, 52 + hasNumbers * 5),
-      experienceDepth: Math.min(95, 66 + foundVerbs.length * 4),
-      atsParseability: 91,
-    },
-    candidateLevel: wordCount > 500 ? "Mid-Senior (3-5 Yrs)" : "Entry-Level / Junior (0-2 Yrs)",
-    estimatedLpaRange: overallScore > 85 ? "18-28 LPA" : overallScore > 72 ? "12-20 LPA" : "6-9 LPA",
-    targetRoles: [
-      "Software Engineer Trainee / Campus Hire",
-      "Associate Frontend Developer (React/TS)",
-      "Associate Backend Engineer (Node/Python)",
-      "SDE Intern"
-    ],
-    detectedSkills: allFound.map((t) => t.toUpperCase()),
-    missingKeywords: missingTech.map((t) => t.toUpperCase()),
-    strongPoints: [
-      `Solid technical foundation centered on ${allFound.slice(0, 3).map((s) => s.toUpperCase()).join(", ") || "core web engineering"}.`,
-      "Clean structural hierarchy with clear headings for Education, Skills, and Experience.",
-      hasNumbers > 3 ? "Effective use of quantified results and percentage metrics in bullet points." : "Clear chronology of work roles and technical responsibilities."
-    ],
-    improvementAreas: [
-      missingTech.length > 0 ? `Consider integrating cloud and modern DevOps keywords like ${missingTech.slice(0, 3).join(", ")}.` : "Add more quantified business impact metrics (e.g. latency reduction %, user growth).",
-      "Strengthen opening summary with high-impact target keywords for automated ATS filters.",
-      "Ensure all project bullet points follow the Google 'Accomplished [X] by doing [Y] resulting in [Z]' formula."
-    ],
-    bulletSuggestions: [
-      {
-        original: "Worked on building web APIs and fixed bugs in the backend service.",
-        improved: "Architected 12+ high-throughput REST APIs using Node.js & TypeScript, decreasing server latency by 28% and resolving 40+ production bottlenecks.",
-        reasoning: "Replaced passive verb 'worked on' with 'Architected', quantified the scope (12+ APIs), and added measurable business impact (28% latency decrease)."
-      },
-      {
-        original: "Helped create frontend UI components using React and styled with Tailwind.",
-        improved: "Spearheaded modular component library in React 19 and Tailwind CSS, reducing frontend development cycle time by 35% across 4 core product modules.",
-        reasoning: "Quantified UI library efficiency and highlighted technical leadership and framework version."
-      }
-    ],
-    atsSummary: `Your resume demonstrates solid technical capability with an estimated ATS pass rate of ${overallScore}%. Key strengths include modern stack adoption, while adding higher impact metrics and targeted cloud tooling will boost match rates for top-tier 20+ LPA roles.`,
-    atsPassProbability: overallScore > 80 ? "High (Passes 90%+ of Enterprise ATS Filters)" : "Moderate (Passes 72% of ATS Filters - Needs Keyword Optimization)"
-  };
+  return scanResume(resumeText || "");
 }
 
 // Fallback Job Match
