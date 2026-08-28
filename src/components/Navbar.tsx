@@ -75,26 +75,26 @@ export const Navbar: React.FC<NavbarProps> = ({
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-18 gap-3">
+        <div className="flex flex-wrap items-center justify-between min-h-16 sm:h-18 py-2 sm:py-0 gap-3">
           
           {/* Brand Logo & Title */}
           <div 
             id="brand-home-link"
-            className="flex items-center gap-3 flex-shrink-0 cursor-pointer" 
+            className="flex items-center gap-2 sm:gap-3 flex-shrink-0 cursor-pointer" 
             onClick={() => onTabChange('scanner')}
           >
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-sm bg-gradient-to-br from-[#1a73e8] via-[#7c3aed] to-[#d946ef]">
-              <FileCheck className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center text-white shadow-sm bg-gradient-to-br from-[#1a73e8] via-[#7c3aed] to-[#d946ef]">
+              <FileCheck className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
 
             <div>
               <div className="flex items-center gap-2">
-                <span className={`font-black text-lg sm:text-xl tracking-tight flex items-center gap-1 ${
+                <span className={`font-black text-base sm:text-xl tracking-tight flex items-center gap-1 ${
                   isDark ? 'text-white' : 'text-[#1f1f1f]'
                 }`}>
                   ATS <span className="text-[#1a73e8] dark:text-[#8ab4f8] font-black">Student Jobs</span>
                 </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                <span className={`hidden sm:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                   isDark 
                     ? 'bg-[#282a2c] text-[#8ab4f8] border border-[#37393b]' 
                     : 'bg-[#e8f0fe] text-[#1a73e8] border border-[#d2e3fc]'
