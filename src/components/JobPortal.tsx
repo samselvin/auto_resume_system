@@ -340,8 +340,8 @@ export const JobPortal: React.FC<JobPortalProps> = ({
               >
                 <div>
                   {/* Top Line: Logo, Title, Platform Tag & Urgency */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex items-start gap-3 min-w-0 flex-[1_1_200px]">
                       <CompanyLogo
                         name={job.company}
                         initials={job.companyInitials}
