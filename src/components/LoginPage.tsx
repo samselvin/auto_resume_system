@@ -41,6 +41,10 @@ interface LoginPageProps {
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const RESEND_COOLDOWN_SECONDS = 30;
+// Temporary: email sign-up needs a verified sending domain before it can actually deliver
+// codes to real students (see emailAuth.ts) — hidden until that's set up. Flip back to
+// true to bring the email/password path back.
+const EMAIL_LOGIN_ENABLED = false;
 
 async function postJson(url: string, body: unknown) {
   const res = await fetch(url, {
@@ -281,7 +285,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 Scan your resume, then apply to roles that match.
               </h1>
               <p className={`text-sm leading-relaxed ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
-                Sign in with Google, or verify your email with a one-time code and set your own password.
+                {EMAIL_LOGIN_ENABLED
+                  ? 'Sign in with Google, or verify your email with a one-time code and set your own password.'
+                  : 'Sign in with your Google account to scan resumes and browse jobs.'}
               </p>
             </div>
 
@@ -342,7 +348,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   Sign in to continue
                 </h2>
                 <p className={`text-xs mt-1 ${isDark ? 'text-[#c4c7c5]' : 'text-[#5f6368]'}`}>
-                  Use Google, or verify your email to create your own password.
+                  {EMAIL_LOGIN_ENABLED
+                    ? 'Use Google, or verify your email to create your own password.'
+                    : 'Sign in with your Google account to continue.'}
                 </p>
               </div>
 
@@ -370,6 +378,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </div>
               )}
 
+              {EMAIL_LOGIN_ENABLED && (
+              <>
               {/* Divider */}
               <div className="my-5 flex items-center gap-3">
                 <div className={`flex-1 h-px ${isDark ? 'bg-[#37393b]' : 'bg-[#e3e3e3]'}`} />
@@ -586,10 +596,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
                 </form>
               )}
+              </>
+              )}
 
               <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-[#747775]">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Google identities are verified server-side; email accounts are confirmed with a one-time code.</span>
+                <span>
+                  {EMAIL_LOGIN_ENABLED
+                    ? 'Google identities are verified server-side; email accounts are confirmed with a one-time code.'
+                    : 'Google identities are verified server-side — no password ever touches our servers.'}
+                </span>
               </div>
             </div>
           </div>
