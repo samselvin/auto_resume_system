@@ -38,7 +38,7 @@ function generateOtp(): string {
  * SMS provider abstraction in the sibling attendance-system project — instead of a silent
  * no-op or a hard crash when credentials aren't set up yet). */
 async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean }> {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_FROM_NAME } = process.env;
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     console.log(`\n[dev email] Verification code for ${email}: ${otp} (expires in 10 minutes)\n`);
@@ -52,8 +52,16 @@ async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
 
+  // Note: this only sets the display name shown next to the address (e.g. "ATS Student
+  // Jobs <you@gmail.com>"). Gmail's SMTP relay still requires the actual address to be
+  // the authenticated account, so it's not fully hidden — a recipient who opens "show
+  // details" still sees it. To truly not expose a personal inbox, send from a separate
+  // account dedicated to the app, or a transactional provider with its own domain.
+  const fromName = SMTP_FROM_NAME || "ATS Student Jobs";
+  const fromAddress = SMTP_FROM || SMTP_USER;
+
   await transporter.sendMail({
-    from: SMTP_FROM || SMTP_USER,
+    from: `"${fromName}" <${fromAddress}>`,
     to: email,
     subject: "Your verification code",
     text: `Your verification code is ${otp}. It expires in 10 minutes.`,

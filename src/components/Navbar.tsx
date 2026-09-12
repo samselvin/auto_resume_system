@@ -75,7 +75,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between min-h-16 sm:h-18 py-2 sm:py-0 gap-3">
+        {/* flex-nowrap (not flex-wrap): with 3 flex children under justify-between, wrapping
+            dumps just the last one (notifications/theme/user cluster) onto its own line,
+            floating below the header row instead of staying part of it. The two spots below
+            that hide extra text until `lg` give this row enough room in between md (where
+            the center tabs first appear) and lg to never need to wrap. */}
+        <div className="flex flex-nowrap items-center justify-between min-h-16 sm:h-18 py-2 sm:py-0 gap-3">
           
           {/* Brand Logo & Title */}
           <div 
@@ -94,15 +99,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}>
                   ATS <span className="text-[#1a73e8] dark:text-[#8ab4f8] font-black">Student Jobs</span>
                 </span>
-                <span className={`hidden sm:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                  isDark 
-                    ? 'bg-[#282a2c] text-[#8ab4f8] border border-[#37393b]' 
+                <span className={`hidden lg:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                  isDark
+                    ? 'bg-[#282a2c] text-[#8ab4f8] border border-[#37393b]'
                     : 'bg-[#e8f0fe] text-[#1a73e8] border border-[#d2e3fc]'
                 }`}>
                   For Students
                 </span>
               </div>
-              <span className={`text-[11px] hidden sm:block font-medium ${
+              <span className={`text-[11px] hidden lg:block font-medium ${
                 isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'
               }`}>
                 Scan your resume, then apply on LinkedIn
@@ -181,7 +186,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Open Student & Placement Officer Guide"
             >
               <GraduationCap className="w-4 h-4 text-[#1a73e8]" />
-              <span className="hidden sm:inline">Classroom Guide</span>
+              <span className="hidden lg:inline">Classroom Guide</span>
             </button>
 
             {/* Theme Mode Switch (Light / Dark) */}
