@@ -51,7 +51,7 @@ export const JobPortal: React.FC<JobPortalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [workplaceFilter, setWorkplaceFilter] = useState<'All' | 'Remote' | 'Hybrid' | 'On-site'>('All');
   const [experienceFilter, setExperienceFilter] = useState<'All' | '0-2 Yrs' | '2-5 Yrs' | '5+ Yrs'>('All');
-  const [sortBy, setSortBy] = useState<'recommended' | 'match' | 'salary' | 'recent'>('recommended');
+  const [sortBy, setSortBy] = useState<'recommended' | 'match' | 'salary' | 'recent'>('recent');
   const [, setNowTick] = useState(0);
 
   useEffect(() => {
@@ -135,6 +135,11 @@ export const JobPortal: React.FC<JobPortalProps> = ({
         };
         return getHighLpa(b.salaryLpa) - getHighLpa(a.salaryLpa);
       }
+      // Newest first: purely by posting time, one after another — no Important/New
+      // tag reshuffling ahead of it, so job N+1 is never newer than job N.
+      if (sortBy === 'recent') {
+        return getPostedAt(b) - getPostedAt(a);
+      }
       const liveA = String(a.id).startsWith('live-job-') ? 1 : 0;
       const liveB = String(b.id).startsWith('live-job-') ? 1 : 0;
       const importantA = a.tags.includes('Important') ? 1 : 0;
@@ -144,9 +149,6 @@ export const JobPortal: React.FC<JobPortalProps> = ({
       const newB = b.tags.includes('New') || String(b.id).startsWith('live-job-li-') ? 1 : 0;
       if (newB !== newA) return newB - newA;
       if (liveB !== liveA) return liveB - liveA;
-      if (sortBy === 'recent') {
-        return getPostedAt(b) - getPostedAt(a);
-      }
       const origA = a.listingSource === 'linkedin' ? 1 : 0;
       const origB = b.listingSource === 'linkedin' ? 1 : 0;
       if (origB !== origA) return origB - origA;
