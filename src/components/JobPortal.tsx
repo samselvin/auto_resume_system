@@ -11,6 +11,7 @@ import {
   Check,
   Linkedin,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import { CompanyLogo } from './CompanyLogo';
 import { PostedTime } from './PostedTime';
@@ -28,6 +29,9 @@ interface JobPortalProps {
   mode?: ThemeMode;
   jobs: Job[];
   matchScores?: Record<string, number>;
+  onRefresh?: () => void | Promise<void>;
+  isRefreshing?: boolean;
+  lastRefreshedAt?: number | null;
 }
 
 export const JobPortal: React.FC<JobPortalProps> = ({
@@ -40,6 +44,9 @@ export const JobPortal: React.FC<JobPortalProps> = ({
   mode = 'light',
   jobs,
   matchScores = {},
+  onRefresh,
+  isRefreshing = false,
+  lastRefreshedAt = null,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [workplaceFilter, setWorkplaceFilter] = useState<'All' | 'Remote' | 'Hybrid' | 'On-site'>('All');
@@ -53,6 +60,17 @@ export const JobPortal: React.FC<JobPortalProps> = ({
   }, []);
 
   const isDark = mode === 'dark';
+
+  const lastRefreshedLabel = (() => {
+    if (!lastRefreshedAt) return null;
+    const seconds = Math.max(0, Math.floor((Date.now() - lastRefreshedAt) / 1000));
+    if (seconds < 10) return 'Updated just now';
+    if (seconds < 60) return `Updated ${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `Updated ${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `Updated ${hours}h ago`;
+  })();
 
   const salaryTiers: { id: SalaryTier; label: string; range: string; desc: string; count: number }[] = [
     {
@@ -154,11 +172,33 @@ export const JobPortal: React.FC<JobPortalProps> = ({
               Apply on LinkedIn. The agent adds new and important LinkedIn posts. Pay and dates stay on LinkedIn.
             </p>
           </div>
-          <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border self-start sm:self-auto ${
-            isDark ? 'bg-[#131314] border-[#37393b] text-[#c4c7c5]' : 'bg-[#f8fafd] border-[#e3e3e3] text-[#444746]'
-          }`}>
-            Showing {filteredJobs.length} openings
-          </span>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {lastRefreshedLabel && (
+              <span className="text-[11px] text-[#747775] hidden sm:inline">{lastRefreshedLabel}</span>
+            )}
+            <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
+              isDark ? 'bg-[#131314] border-[#37393b] text-[#c4c7c5]' : 'bg-[#f8fafd] border-[#e3e3e3] text-[#444746]'
+            }`}>
+              Showing {filteredJobs.length} openings
+            </span>
+            {onRefresh && (
+              <button
+                type="button"
+                id="refresh-jobs-btn"
+                onClick={() => onRefresh()}
+                disabled={isRefreshing}
+                title="Pull the newest LinkedIn posts"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-70 ${
+                  isDark
+                    ? 'bg-[#131314] border-[#37393b] text-[#8ab4f8] hover:bg-[#282a2c]'
+                    : 'bg-[#e8f0fe] border-[#d2e3fc] text-[#1a73e8] hover:bg-[#d2e3fc]'
+                }`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'Refreshing…' : 'Refresh'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Salary Tier Grid */}

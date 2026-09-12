@@ -96,6 +96,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<JobNotification[]>([]);
   const [liveToast, setLiveToast] = useState<JobNotification | null>(null);
   const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
+  const [isRefreshingJobs, setIsRefreshingJobs] = useState(false);
+  const [jobsLastRefreshedAt, setJobsLastRefreshedAt] = useState<number | null>(null);
 
   // Applications Tracker state
   const [applications, setApplications] = useState<JobApplication[]>(() => {
@@ -243,6 +245,32 @@ export default function App() {
     const targetJob = jobs.find((j) => j.id === jobId);
     if (targetJob) {
       handleAnalyzeJob(targetJob);
+    }
+  };
+
+  // Manually re-run the LinkedIn job agent (the "Refresh" button on Find Jobs).
+  // The agent already auto-runs on load and every 10 minutes on the server, but a manual
+  // trigger lets a student pull the newest posts on demand instead of waiting.
+  const handleRefreshJobs = async () => {
+    if (isRefreshingJobs) return;
+    setIsRefreshingJobs(true);
+    try {
+      const response = await fetch('/api/jobs/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ heal: true }),
+      });
+      const report = await response.json();
+      if (response.ok && Array.isArray(report.jobs)) {
+        const live = report.jobs.filter((j: Job) => String(j.id).startsWith('live-job-'));
+        setJobs([...live, ...MOCK_JOBS]);
+        (report.newJobs || []).forEach((job: Job) => ingestLiveJob(job, true));
+      }
+      setJobsLastRefreshedAt(Date.now());
+    } catch (error) {
+      console.error('Failed to refresh jobs:', error);
+    } finally {
+      setIsRefreshingJobs(false);
     }
   };
 
@@ -608,6 +636,7 @@ export default function App() {
                 const live = report.jobs.filter((j) => String(j.id).startsWith('live-job-'));
                 setJobs([...live, ...MOCK_JOBS]);
                 (report.newJobs || []).forEach((job) => ingestLiveJob(job, true));
+                setJobsLastRefreshedAt(Date.now());
               }}
             />
             <JobPortal
@@ -620,6 +649,9 @@ export default function App() {
               resumeData={resumeData}
               mode={mode}
               matchScores={jobMatchScores}
+              onRefresh={handleRefreshJobs}
+              isRefreshing={isRefreshingJobs}
+              lastRefreshedAt={jobsLastRefreshedAt}
             />
           </div>
         )}
