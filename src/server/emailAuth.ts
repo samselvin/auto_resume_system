@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import dns from "dns";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 import { StoredUser, loadUsers, saveUsers, findUserByEmail } from "./userStore";
@@ -37,6 +38,27 @@ function generateOtp(): string {
  * (mirrors this codebase's existing pattern of a working "dev" fallback provider — see the
  * SMS provider abstraction in the sibling attendance-system project — instead of a silent
  * no-op or a hard crash when credentials aren't set up yet). */
+/** Nodemailer resolves the SMTP host to both IPv4 and IPv6 addresses and then picks
+ * ONE AT RANDOM to connect to. Many hosts (Render included) hand containers an IPv6
+ * address that looks routable locally but can't actually reach the public internet, so
+ * this random pick fails with ENETUNREACH roughly however often it lands on IPv6 —
+ * intermittent by nature, not a credentials problem. Resolving to IPv4 ourselves and
+ * connecting to that literal address sidesteps the coin flip; `tls.servername` keeps
+ * certificate hostname verification checking against the real hostname instead of the
+ * bare IP (whose cert wouldn't match otherwise). */
+async function resolveIPv4(hostname: string): Promise<string> {
+  // dns.lookup() goes through the OS's own resolver (getaddrinfo) rather than issuing a
+  // raw DNS query itself, so it keeps working in sandboxes/containers that block outbound
+  // port 53 but still resolve hostnames fine for every other connection (dns.resolve4()
+  // would fail outright there and silently fall back to the very randomness we're avoiding).
+  try {
+    const { address } = await dns.promises.lookup(hostname, { family: 4 });
+    return address;
+  } catch {
+    return hostname;
+  }
+}
+
 async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean }> {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_FROM_NAME } = process.env;
 
@@ -45,11 +67,13 @@ async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean
     return { sent: false };
   }
 
+  const connectHost = await resolveIPv4(SMTP_HOST);
   const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
+    host: connectHost,
     port: Number(SMTP_PORT) || 587,
     secure: Number(SMTP_PORT) === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
+    tls: { servername: SMTP_HOST },
   });
 
   // Note: this only sets the display name shown next to the address (e.g. "ATS Student
