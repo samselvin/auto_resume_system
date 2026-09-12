@@ -34,10 +34,6 @@ function generateOtp(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
-/** Sends the OTP over real SMTP when configured, otherwise logs it to the server console
- * (mirrors this codebase's existing pattern of a working "dev" fallback provider — see the
- * SMS provider abstraction in the sibling attendance-system project — instead of a silent
- * no-op or a hard crash when credentials aren't set up yet). */
 /** Nodemailer resolves the SMTP host to both IPv4 and IPv6 addresses and then picks
  * ONE AT RANDOM to connect to. Many hosts (Render included) hand containers an IPv6
  * address that looks routable locally but can't actually reach the public internet, so
@@ -59,15 +55,51 @@ async function resolveIPv4(hostname: string): Promise<string> {
   }
 }
 
-async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean }> {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_FROM_NAME } = process.env;
+function otpEmailContent(otp: string) {
+  return {
+    subject: "Your verification code",
+    text: `Your verification code is ${otp}. It expires in 10 minutes.`,
+    html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px;">${otp}</strong>.</p><p>It expires in 10 minutes.</p>`,
+  };
+}
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.log(`\n[dev email] Verification code for ${email}: ${otp} (expires in 10 minutes)\n`);
-    return { sent: false };
+/** Resend sends over plain HTTPS (its API, not SMTP), so it isn't affected by hosts like
+ * Render that block outbound SMTP ports entirely — confirmed via a raw TCP diagnostic:
+ * ports 25/465/587 all timed out reaching Gmail from Render's network, while regular
+ * HTTPS calls (this app already fetches LinkedIn jobs over HTTPS) work fine. This is why
+ * Resend is tried first, ahead of SMTP. Without a verified sending domain, Resend's
+ * default onboarding@resend.com sender can only deliver to the email that owns the
+ * Resend account — fine for solo testing, not for real students until a domain is
+ * verified and RESEND_FROM is set to an address on it. */
+async function sendViaResend(email: string, otp: string, apiKey: string): Promise<void> {
+  const fromName = process.env.RESEND_FROM_NAME || process.env.SMTP_FROM_NAME || "ATS Student Jobs";
+  const fromAddress = process.env.RESEND_FROM || "onboarding@resend.com";
+  const { subject, text, html } = otpEmailContent(otp);
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${fromName} <${fromAddress}>`,
+      to: [email],
+      subject,
+      text,
+      html,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Resend API error (${res.status}): ${body.slice(0, 300)}`);
   }
+}
 
-  const connectHost = await resolveIPv4(SMTP_HOST);
+async function sendViaSmtp(email: string, otp: string): Promise<void> {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_FROM_NAME } = process.env;
+  const connectHost = await resolveIPv4(SMTP_HOST!);
   const transporter = nodemailer.createTransport({
     host: connectHost,
     port: Number(SMTP_PORT) || 587,
@@ -87,17 +119,47 @@ async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean
   await transporter.sendMail({
     from: `"${fromName}" <${fromAddress}>`,
     to: email,
-    subject: "Your verification code",
-    text: `Your verification code is ${otp}. It expires in 10 minutes.`,
-    html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px;">${otp}</strong>.</p><p>It expires in 10 minutes.</p>`,
+    ...otpEmailContent(otp),
   });
-  return { sent: true };
+}
+
+/** Sends the OTP through the best available channel, otherwise logs it to the server
+ * console (mirrors this codebase's existing pattern of a working "dev" fallback provider
+ * — see the SMS provider abstraction in the sibling attendance-system project — instead
+ * of a silent no-op or a hard crash when nothing is configured yet). Resend is tried
+ * first since it's what actually works on this app's target host (Render); SMTP is kept
+ * as a fallback since it works fine in environments that don't block those ports (e.g.
+ * local dev). */
+async function sendOtpEmail(email: string, otp: string): Promise<{ sent: boolean }> {
+  const { RESEND_API_KEY, SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
+
+  if (RESEND_API_KEY) {
+    try {
+      await sendViaResend(email, otp, RESEND_API_KEY);
+      return { sent: true };
+    } catch (e) {
+      // Fall through to the console-log dev fallback below rather than hard-failing
+      // sign-up — e.g. the Resend account has no verified domain yet. The real error is
+      // still logged server-side so it's not silently lost.
+      console.warn("Resend send failed, falling back to console-logged code:", e);
+    }
+  } else if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+    try {
+      await sendViaSmtp(email, otp);
+      return { sent: true };
+    } catch (e) {
+      console.warn("SMTP send failed, falling back to console-logged code:", e);
+    }
+  }
+
+  console.log(`\n[dev email] Verification code for ${email}: ${otp} (expires in 10 minutes)\n`);
+  return { sent: false };
 }
 
 export async function startEmailSignup(
   rawEmail: string,
   name: string
-): Promise<{ devOtp?: string }> {
+): Promise<{ delivered: boolean; devOtp?: string }> {
   const email = normalizeEmail(rawEmail);
   if (!EMAIL_RE.test(email)) {
     throw new Error("Please enter a valid email address.");
@@ -127,7 +189,13 @@ export async function startEmailSignup(
   });
 
   const { sent } = await sendOtpEmail(email, otp);
-  return sent ? {} : { devOtp: otp };
+  if (sent) return { delivered: true };
+  // The code is always logged server-side above regardless of environment. Handing it
+  // back in the API response too is a convenience for local testing, but in production
+  // it would let anyone "verify" any email address without ever proving they own it —
+  // the whole point of the OTP step — so it's withheld there even if email delivery
+  // isn't configured yet.
+  return process.env.NODE_ENV === "production" ? { delivered: false } : { delivered: false, devOtp: otp };
 }
 
 export async function verifyEmailSignup(

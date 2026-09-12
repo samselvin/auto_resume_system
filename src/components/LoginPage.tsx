@@ -160,8 +160,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
       if (data.devOtp) {
         setDevOtp(data.devOtp);
-      } else {
+      } else if (data.delivered) {
         setEmailNotice(`We sent a 6-digit code to ${email}. Check your inbox.`);
+      } else {
+        // Email delivery isn't configured/working yet and the code was withheld from
+        // this response (see startEmailSignup) — don't claim an email went out when it
+        // didn't, that would just leave whoever's signing up stuck with no way in.
+        setError('Email verification is not available right now. Please use "Continue with Google" instead, or contact the site owner.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send a verification code.');

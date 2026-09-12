@@ -241,53 +241,6 @@ app.get("/api/health", (req: Request, res: Response) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-// Temporary diagnostic: raw TCP connect test against Gmail's SMTP ports, to tell
-// "the host firewalls this port outright" apart from "our own SMTP code is broken" —
-// a hard timeout on every port here would point at the platform, not the app.
-// Safe to remove once the real SMTP issue is resolved.
-app.get("/api/debug/smtp-check", async (_req: Request, res: Response) => {
-  const net = await import("net");
-  const dns = await import("dns");
-  const ports = [25, 465, 587];
-  const results: Record<string, unknown> = {};
-
-  try {
-    results.dnsLookup = await dns.promises.lookup("smtp.gmail.com", { family: 4 });
-  } catch (e: any) {
-    results.dnsLookup = { error: String(e), code: e?.code };
-  }
-
-  await Promise.all(
-    ports.map(
-      (port) =>
-        new Promise<void>((resolve) => {
-          try {
-            const socket = new net.Socket();
-            const start = Date.now();
-            socket.setTimeout(6000);
-            const finish = (msg: unknown) => {
-              results[port] = msg;
-              try {
-                socket.destroy();
-              } catch {}
-              resolve();
-            };
-            socket.once("connect", () => finish(`connected in ${Date.now() - start}ms`));
-            socket.once("timeout", () => finish(`timeout after ${Date.now() - start}ms`));
-            socket.once("error", (e: any) =>
-              finish({ toString: String(e), message: e?.message, code: e?.code, errno: e?.errno })
-            );
-            socket.connect(port, "smtp.gmail.com");
-          } catch (e: any) {
-            results[port] = { syncThrow: String(e) };
-            resolve();
-          }
-        })
-    )
-  );
-  res.json(results);
-});
-
 // Endpoint: Scan Resume with local ATS engine
 app.post("/api/scan-resume", (req: Request, res: Response) => {
   try {
