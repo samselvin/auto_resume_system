@@ -458,11 +458,11 @@ export const JobPortal: React.FC<JobPortalProps> = ({
                   </div>
 
                   <div className="mt-3.5 space-y-2.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-[#747775]">
+                    <span className="block text-[10px] font-bold uppercase tracking-wide text-[#747775]">
                       What this company is hiring for
                     </span>
                     {hiring.all.length === 0 ? (
-                      <span className={`text-[11px] ${isDark ? 'text-[#8e918f]' : 'text-[#5f6368]'}`}>
+                      <span className={`block text-[11px] ${isDark ? 'text-[#8e918f]' : 'text-[#5f6368]'}`}>
                         Open the LinkedIn post for the full requirement list.
                       </span>
                     ) : (
