@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
+import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { PDFParse } from "pdf-parse";
@@ -11,6 +12,14 @@ import { fetchImportantLinkedInJobs, isAgentLinkedInJobId } from "./src/lib/link
 import { compareResumeToJob } from "./src/lib/resumeJobMatch";
 import { buildStudentOutreach } from "./src/lib/outreachTemplates";
 import { scanResume } from "./src/lib/atsResumeScan";
+import {
+  verifyGoogleCredential,
+  issueSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+  getUserFromSession,
+  toPublicUser,
+} from "./src/server/googleAuth";
 
 dotenv.config();
 
@@ -18,6 +27,38 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "20mb" }));
+app.use(cookieParser());
+
+// Endpoint: verify a Google Identity Services ID token and start a real session.
+// Replaces the old client-only "type any @gmail.com address" fake login — this actually
+// checks the credential against Google's servers before trusting the identity.
+app.post("/api/auth/google", async (req: Request, res: Response) => {
+  try {
+    const { credential } = req.body || {};
+    if (!credential || typeof credential !== "string") {
+      return res.status(400).json({ error: "No Google credential received." });
+    }
+    const user = await verifyGoogleCredential(credential);
+    const token = issueSessionToken(user);
+    setSessionCookie(res, token);
+    return res.json({ user: toPublicUser(user) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Google sign-in failed.";
+    console.warn("Google sign-in failed:", message);
+    return res.status(401).json({ error: message });
+  }
+});
+
+app.get("/api/auth/session", (req: Request, res: Response) => {
+  const user = getUserFromSession(req.cookies || {});
+  if (!user) return res.status(401).json({ error: "Not signed in." });
+  return res.json({ user: toPublicUser(user) });
+});
+
+app.post("/api/auth/logout", (_req: Request, res: Response) => {
+  clearSessionCookie(res);
+  return res.json({ ok: true });
+});
 
 function cleanExtractedText(raw: string): string {
   return raw

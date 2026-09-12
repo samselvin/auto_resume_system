@@ -23,7 +23,6 @@ import { NotificationToast } from './components/NotificationToast';
 import { MOCK_JOBS } from './data/mockJobs';
 import { formatLinkedInPostedLine } from './lib/jobTime';
 import { openLinkedInApply } from './lib/jobLinks';
-import { isGoogleEmail } from './lib/googleEmail';
 import { compareResumeToJob } from './lib/resumeJobMatch';
 import { buildStudentOutreach } from './lib/outreachTemplates';
 import confetti from 'canvas-confetti';
@@ -38,20 +37,26 @@ export default function App() {
     }
   });
 
-  // Authentication State
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('ats_auth_user');
-      const parsed = saved ? JSON.parse(saved) : null;
-      if (parsed?.email && !isGoogleEmail(parsed.email)) {
-        localStorage.removeItem('ats_auth_user');
-        return null;
-      }
-      return parsed;
-    } catch {
-      return null;
-    }
-  });
+  // Authentication State — the server session cookie (set after Google verifies the
+  // credential) is the source of truth, not anything cached client-side.
+  const [user, setUser] = useState<User | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/session', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.user) setUser(data.user);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setIsCheckingSession(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Navigation tab
   const [currentTab, setCurrentTab] = useState<AppTab>('scanner');
@@ -59,31 +64,28 @@ export default function App() {
   // Classroom Guide Modal state
   const [isClassroomGuideOpen, setIsClassroomGuideOpen] = useState(false);
 
-  // Resume state - Starts empty (no demo resumes)
-  const [resumeData, setResumeData] = useState<ResumeData | null>(() => {
-    try {
-      const savedUser = localStorage.getItem('ats_auth_user');
-      if (!savedUser) return null;
-      const parsedUser = JSON.parse(savedUser) as User;
-      const saved = localStorage.getItem(`ats_resume_${parsedUser.id}`);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [scanResult, setScanResult] = useState<AtsScanResult | null>(() => {
-    try {
-      const savedUser = localStorage.getItem('ats_auth_user');
-      if (!savedUser) return null;
-      const parsedUser = JSON.parse(savedUser) as User;
-      const saved = localStorage.getItem(`ats_scan_${parsedUser.id}`);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  // Resume state - Starts empty (no demo resumes), loaded per-user once the session
+  // check above resolves (see the effect below).
+  const [resumeData, setResumeData] = useState<ResumeData | null>(null);
+  const [scanResult, setScanResult] = useState<AtsScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  // Load this user's cached resume/scan once we know who they are.
+  useEffect(() => {
+    if (!user) {
+      setResumeData(null);
+      setScanResult(null);
+      return;
+    }
+    try {
+      const savedResume = localStorage.getItem(`ats_resume_${user.id}`);
+      setResumeData(savedResume ? JSON.parse(savedResume) : null);
+      const savedScan = localStorage.getItem(`ats_scan_${user.id}`);
+      setScanResult(savedScan ? JSON.parse(savedScan) : null);
+    } catch (e) {
+      console.error('Failed to load cached resume/scan', e);
+    }
+  }, [user?.id]);
 
   // Job Portal & Salary Tier state (6-9 LPA, 12-20 LPA, 21+ LPA)
   const [currentSalaryTier, setCurrentSalaryTier] = useState<SalaryTier>('all');
@@ -324,36 +326,20 @@ export default function App() {
     }
   }, [scanResult, user?.id]);
 
+  // Google already verified this user server-side and set the session cookie (see
+  // LoginPage) — resume/scan/notifications for them load via the effects above/below
+  // once `user` changes.
   const handleLogin = (newUser: User) => {
     setUser(newUser);
     setCurrentTab('scanner');
-    try {
-      localStorage.setItem('ats_auth_user', JSON.stringify(newUser));
-      const storedResume = localStorage.getItem(`ats_resume_${newUser.id}`);
-      const storedScan = localStorage.getItem(`ats_scan_${newUser.id}`);
-      setResumeData(storedResume ? JSON.parse(storedResume) : null);
-      setScanResult(storedScan ? JSON.parse(storedScan) : null);
-      const savedNotifs = localStorage.getItem(`ats_notifications_${newUser.id}`);
-      if (savedNotifs) {
-        setNotifications(JSON.parse(savedNotifs));
-      } else {
-        const notifs = generateNotificationsForUser(newUser);
-        setNotifications(notifs);
-        localStorage.setItem(`ats_notifications_${newUser.id}`, JSON.stringify(notifs));
-      }
-    } catch (e) {
-      console.error('Failed to persist auth', e);
-    }
   };
 
   const handleLogout = () => {
     setUser(null);
     setNotifications([]);
-    try {
-      localStorage.removeItem('ats_auth_user');
-    } catch (e) {
-      console.error('Failed to remove auth', e);
-    }
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch((e) => {
+      console.error('Failed to clear session', e);
+    });
   };
 
   // Trigger ATS Scan
@@ -531,6 +517,16 @@ export default function App() {
 
   const appliedJobIds = new Set(applications.map((a) => a.jobId));
   const isDark = mode === 'dark';
+
+  // Wait for the server session check before deciding whether to show the login page,
+  // so an already-signed-in user doesn't see a flash of the login screen on reload.
+  if (isCheckingSession) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-[#131314]' : 'bg-[#f8fafd]'}`}>
+        <div className="w-8 h-8 rounded-full border-4 border-[#1a73e8] border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   // If user is not authenticated, show the Login Page
   if (!user) {

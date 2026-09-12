@@ -211,9 +211,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                   title={`${user.name} (${user.email})`}
                 >
-                  <div className="w-5 h-5 rounded-full bg-[#1a73e8] text-white flex items-center justify-center text-[10px] font-bold">
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
+                  {user.picture ? (
+                    <img src={user.picture} alt="" className="w-5 h-5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-[#1a73e8] text-white flex items-center justify-center text-[10px] font-bold">
+                      {user.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <span className="max-w-[100px] truncate">{user.name}</span>
                 </div>
 

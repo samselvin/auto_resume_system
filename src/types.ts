@@ -3,18 +3,13 @@ export type ThemeMode = 'dark' | 'light';
 
 export type SalaryTier = 'all' | '6-9 LPA' | '12-20 LPA' | '21+ LPA';
 
-export type AccountType = 'student' | 'company';
-
 export type AppTab = 'scanner' | 'jobs' | 'post';
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  role?: string;
-  accountType?: AccountType;
-  avatar?: string;
-  targetSalary?: string;
+  picture?: string;
 }
 
 export interface ResumeData {
