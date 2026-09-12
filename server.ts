@@ -247,24 +247,41 @@ app.get("/api/health", (req: Request, res: Response) => {
 // Safe to remove once the real SMTP issue is resolved.
 app.get("/api/debug/smtp-check", async (_req: Request, res: Response) => {
   const net = await import("net");
+  const dns = await import("dns");
   const ports = [25, 465, 587];
-  const results: Record<number, string> = {};
+  const results: Record<string, unknown> = {};
+
+  try {
+    results.dnsLookup = await dns.promises.lookup("smtp.gmail.com", { family: 4 });
+  } catch (e: any) {
+    results.dnsLookup = { error: String(e), code: e?.code };
+  }
+
   await Promise.all(
     ports.map(
       (port) =>
         new Promise<void>((resolve) => {
-          const socket = new net.Socket();
-          const start = Date.now();
-          socket.setTimeout(6000);
-          const finish = (msg: string) => {
-            results[port] = msg;
-            socket.destroy();
+          try {
+            const socket = new net.Socket();
+            const start = Date.now();
+            socket.setTimeout(6000);
+            const finish = (msg: unknown) => {
+              results[port] = msg;
+              try {
+                socket.destroy();
+              } catch {}
+              resolve();
+            };
+            socket.once("connect", () => finish(`connected in ${Date.now() - start}ms`));
+            socket.once("timeout", () => finish(`timeout after ${Date.now() - start}ms`));
+            socket.once("error", (e: any) =>
+              finish({ toString: String(e), message: e?.message, code: e?.code, errno: e?.errno })
+            );
+            socket.connect(port, "smtp.gmail.com");
+          } catch (e: any) {
+            results[port] = { syncThrow: String(e) };
             resolve();
-          };
-          socket.once("connect", () => finish(`connected in ${Date.now() - start}ms`));
-          socket.once("timeout", () => finish("timeout after 6000ms"));
-          socket.once("error", (e: Error) => finish(`error: ${e.message}`));
-          socket.connect(port, "smtp.gmail.com");
+          }
         })
     )
   );
