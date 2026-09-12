@@ -134,6 +134,11 @@ function catalogLabelFor(phrase: string): string | null {
   return null;
 }
 
+/** Job-title/level words that should never anchor a "skill" (e.g. "Software Developer 3",
+ * "Engineer II") — without this, the digit/symbol shortcut below would wave a job title
+ * straight through just because it ends in a level number. */
+const TITLE_OR_LEVEL_WORDS = /\b(developer|engineer|analyst|architect|specialist|consultant|manager|associate|intern|trainee|level|grade|tier|band)\b/i;
+
 function looksLikePostSkill(phrase: string): boolean {
   const raw = phrase.replace(/\s+/g, ' ').trim();
   const n = normalize(raw);
@@ -144,7 +149,7 @@ function looksLikePostSkill(phrase: string): boolean {
   }
   if (SKILL_CATALOG.some((e) => e.kind === 'nonTechnical' && e.re.test(raw))) return false;
   if (catalogLabelFor(raw)) return true;
-  if (/[+#.]/.test(raw) || /\d/.test(raw)) return true;
+  if ((/[+#.]/.test(raw) || /\d/.test(raw)) && !TITLE_OR_LEVEL_WORDS.test(raw)) return true;
   if (/^[A-Z]{2,8}$/.test(raw)) return true;
   const words = n.split(' ').filter(Boolean);
   if (words.length > 4) return false;
@@ -155,7 +160,9 @@ function looksLikePostSkill(phrase: string): boolean {
 
 function splitSkillList(chunk: string): string[] {
   return chunk
-    .split(/\s*(?:,|\/|\||;|\band\b|\bor\b)\s*/i)
+    // Not "/" — that would tear compound tech pairs like "CI/CD" or "TCP/IP" into
+    // meaningless halves before catalogLabelFor gets a chance to match the whole term.
+    .split(/\s*(?:,|\||;|\band\b|\bor\b)\s*/i)
     .map((part) => part.replace(/^(and|or|including|such as|like|the)\s+/i, '').replace(/[.:]+$/, '').trim())
     .filter(Boolean);
 }
@@ -217,6 +224,13 @@ export function hiringNeedsFromJob(job: Partial<Job> & { title?: string; skills?
       (skill) => !nonTechnical.some((soft) => normalize(soft) === normalize(skill))
     );
     technical = leftover.filter(looksLikePostSkill);
+  }
+  // A company whose name also happens to be a catalog technology (Oracle, SAP, Salesforce,
+  // ServiceNow...) gets "detected" as its own required skill just from About-us boilerplate
+  // repeating the employer's name — that's a self-reference, not a real requirement.
+  if (job.company) {
+    const companyKey = normalize(job.company);
+    technical = technical.filter((skill) => normalize(skill) !== companyKey);
   }
   technical = technical.slice(0, 12);
   return { technical, nonTechnical, all: uniqueSkills([...technical, ...nonTechnical]) };

@@ -298,8 +298,8 @@ function estimateSalaryTier(experienceTier: Job['experienceTier']): Job['salaryT
   return '12-20 LPA';
 }
 
-function inferHiringNeeds(title: string, aboutText?: string) {
-  return hiringNeedsFromJob({ title, description: aboutText || '' });
+function inferHiringNeeds(title: string, aboutText: string | undefined, company: string) {
+  return hiringNeedsFromJob({ title, description: aboutText || '', company });
 }
 
 function htmlBlockToText(html: string): string {
@@ -361,7 +361,7 @@ export function guestCardToJob(card: LinkedInGuestCard): Job {
   const tags = ['LinkedIn'];
   if (isNew) tags.push('New');
   if (important) tags.push('Important');
-  const hiring = inferHiringNeeds(card.title, card.aboutText);
+  const hiring = inferHiringNeeds(card.title, card.aboutText, card.company);
   const experienceTier = inferExperienceTier(`${card.title} ${card.experienceLabel || ''} ${card.aboutText || ''}`);
   return {
     id: `live-job-li-${card.jobId}`,
