@@ -98,6 +98,9 @@ export interface AtsScanResult {
     status: 'good' | 'improve' | 'missing';
     detail: string;
   }>;
+  topPriorityActions?: string[];
+  pageEstimate?: string;
+  scoreWeights?: Record<keyof CategoryScores, number>;
 }
 
 export interface Job {

@@ -63,12 +63,13 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
     });
   };
 
+  const weights = scanResult.scoreWeights;
   const categories = [
-    { key: 'keywordMatch', label: 'Keyword & Tech Alignment', value: scanResult.categoryScores.keywordMatch, desc: 'Relevance to target tech stack' },
-    { key: 'formatting', label: 'ATS Format & Structure', value: scanResult.categoryScores.formatting, desc: 'Heading clarity and parsing hierarchy' },
-    { key: 'impactMetrics', label: 'Impact & Quantification', value: scanResult.categoryScores.impactMetrics, desc: 'Presence of measurable %, $, scale' },
-    { key: 'experienceDepth', label: 'Experience Depth', value: scanResult.categoryScores.experienceDepth, desc: 'Action verbs & scope progression' },
-    { key: 'atsParseability', label: 'Enterprise ATS Pass Rate', value: scanResult.categoryScores.atsParseability, desc: 'Taleo, Greenhouse & Workday readiness' },
+    { key: 'keywordMatch', label: 'Keyword & Tech Alignment', value: scanResult.categoryScores.keywordMatch, desc: 'Relevance to target tech stack', weight: weights?.keywordMatch },
+    { key: 'formatting', label: 'ATS Format & Structure', value: scanResult.categoryScores.formatting, desc: 'Heading clarity and parsing hierarchy', weight: weights?.formatting },
+    { key: 'impactMetrics', label: 'Impact & Quantification', value: scanResult.categoryScores.impactMetrics, desc: 'Presence of measurable %, $, scale', weight: weights?.impactMetrics },
+    { key: 'experienceDepth', label: 'Experience Depth', value: scanResult.categoryScores.experienceDepth, desc: 'Action verbs & scope progression', weight: weights?.experienceDepth },
+    { key: 'atsParseability', label: 'Enterprise ATS Pass Rate', value: scanResult.categoryScores.atsParseability, desc: 'Taleo, Greenhouse & Workday readiness', weight: weights?.atsParseability },
   ];
 
   const catSkills = scanResult.categorizedSkills || { frontend: [], backend: [], cloud: [], tools: [] };
@@ -220,6 +221,15 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
                 <span>Level: <strong>{scanResult.candidateLevel}</strong></span>
               </div>
 
+              {scanResult.pageEstimate && (
+                <div className={`px-3.5 py-1.5 rounded-full border text-xs font-medium flex items-center gap-1.5 ${
+                  isDark ? 'bg-[#131314] border-[#37393b] text-[#c4c7c5]' : 'bg-[#f8fafd] border-[#e3e3e3] text-[#444746]'
+                }`}>
+                  <FileCheck2 className="w-3.5 h-3.5 text-[#747775]" />
+                  <span>Length: <strong>{scanResult.pageEstimate}</strong></span>
+                </div>
+              )}
+
               <div className={`px-3.5 py-1.5 rounded-full border text-xs font-medium flex items-center gap-1.5 ${
                 isDark ? 'bg-[#131314] border-[#37393b] text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
               }`}>
@@ -298,6 +308,30 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 2b. Do these first — the single highest-priority action list for the student */}
+      {scanResult.topPriorityActions?.length ? (
+        <div className={`rounded-3xl p-5 sm:p-6 border shadow-sm ${
+          isDark ? 'bg-[#1e1f20] border-amber-800/40' : 'bg-amber-50/70 border-amber-200'
+        }`}>
+          <h3 className={`text-sm font-bold flex items-center gap-2 mb-3 ${isDark ? 'text-amber-300' : 'text-amber-800'}`}>
+            <Zap className="w-4 h-4" />
+            Do these first
+          </h3>
+          <ol className="space-y-2 list-none">
+            {scanResult.topPriorityActions.map((action, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-xs sm:text-sm">
+                <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  isDark ? 'bg-amber-900/50 text-amber-300' : 'bg-amber-200 text-amber-900'
+                }`}>
+                  {i + 1}
+                </span>
+                <span className={isDark ? 'text-[#e3e3e3]' : 'text-[#1f1f1f]'}>{action}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
 
       {/* 3. Categorized Skills & ATS Compliance Matrix */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -544,7 +578,12 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
               isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f8fafd] border-[#e3e3e3]'
             }`}>
               <div className="flex items-center justify-between text-xs">
-                <span className={`font-semibold ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>{cat.label}</span>
+                <span className={`font-semibold ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
+                  {cat.label}
+                  {typeof cat.weight === 'number' && (
+                    <span className="ml-1 font-normal text-[#747775]">({Math.round(cat.weight * 100)}% weight)</span>
+                  )}
+                </span>
                 <span className="font-bold text-[#1a73e8] dark:text-[#8ab4f8]">{cat.value}/100</span>
               </div>
               <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-[#282a2c]' : 'bg-[#e3e3e3]'}`}>

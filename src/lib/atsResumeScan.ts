@@ -13,6 +13,14 @@ const ACTION_VERBS = [
   'created', 'improved', 'delivered', 'migrated', 'integrated', 'launched',
 ];
 const WEAK_STARTERS = /^(worked on|helped|did|handled|responsible for|was part of|involved in)\b/i;
+const PRONOUN_RE = /\b(i|my|me|myself)\b/i;
+const SCORE_WEIGHTS = {
+  keywordMatch: 0.3,
+  formatting: 0.25,
+  atsParseability: 0.2,
+  impactMetrics: 0.15,
+  experienceDepth: 0.1,
+};
 
 function clamp(n: number, min = 0, max = 100): number {
   return Math.round(Math.min(max, Math.max(min, n)));
@@ -77,19 +85,34 @@ export function scanResume(resumeText: string): AtsScanResult {
   const degreeMatch = text.match(/\b(B\.?\s*Tech|Bachelor(?:'s)?(?: of)?(?: Technology| Engineering| Science)?|B\.?\s*E\.?|M\.?\s*Tech|Master(?:'s)?|MCA|BCA|MBA)\b/i);
   const yearMatch = text.match(/\b(20\d{2})\s*[-–]\s*(20\d{2}|present|current)\b/i);
   const instMatch = text.match(/\b(IIT|NIT|IIIT|BITS|[A-Z][A-Za-z&.\s]{4,40}(?:University|Institute|College))\b/);
+  const hasProfileLink = Boolean(linkedinMatch || githubMatch);
+  const pronounHits = (text.match(new RegExp(PRONOUN_RE, 'gi')) || []).length;
 
-  const keywordMatch = clamp(
-    technical.length === 0 ? 18 : technical.length <= 2 ? 38 : technical.length <= 4 ? 58 : technical.length <= 7 ? 76 : 88
+  // Keyword-stuffing check: how many times technical terms appear vs how many distinct
+  // terms were found. A resume repeating the same 3 skills 20 times should score lower
+  // on relevance than one that genuinely lists a broad, varied stack.
+  const technicalMentions = technical.reduce(
+    (sum, skill) => sum + (lower.split(skill.toLowerCase()).length - 1),
+    0
   );
+  const keywordStuffing = technical.length > 0 && technicalMentions / technical.length >= 4 && wordCount < 500;
+
+  let keywordMatch =
+    technical.length === 0 ? 18 : technical.length <= 2 ? 38 : technical.length <= 4 ? 58 : technical.length <= 7 ? 76 : 88;
+  if (keywordStuffing) keywordMatch -= 14;
+  keywordMatch = clamp(keywordMatch);
+
   let formatting = 28;
   if (emailMatch) formatting += 14;
   if (phoneMatch) formatting += 8;
+  if (hasProfileLink) formatting += 6;
   if (hasSkillsHeader) formatting += 12;
   if (hasEducation) formatting += 10;
   if (hasExperience || hasProjects) formatting += 12;
   if (hasSummary) formatting += 6;
   if (looksLikeName) formatting += 6;
   if (tableHeavy) formatting -= 22;
+  if (pronounHits >= 3) formatting -= 10;
   if (wordCount < 180) formatting -= 16;
   if (wordCount > 1100) formatting -= 8;
   formatting = clamp(formatting);
@@ -111,8 +134,13 @@ export function scanResume(resumeText: string): AtsScanResult {
   atsParseability = clamp(atsParseability);
 
   const overallScore = clamp(
-    0.3 * keywordMatch + 0.25 * formatting + 0.2 * atsParseability + 0.15 * impactMetrics + 0.1 * experienceDepth
+    SCORE_WEIGHTS.keywordMatch * keywordMatch +
+      SCORE_WEIGHTS.formatting * formatting +
+      SCORE_WEIGHTS.atsParseability * atsParseability +
+      SCORE_WEIGHTS.impactMetrics * impactMetrics +
+      SCORE_WEIGHTS.experienceDepth * experienceDepth
   );
+  const pageEstimate = wordCount === 0 ? 'No content yet' : wordCount <= 550 ? '~1 page' : wordCount <= 1050 ? '~2 pages' : '~3+ pages';
   const hardSkillsScore = clamp(technical.length === 0 ? 20 : 28 + technical.length * 8);
   const softSkillsScore = clamp(
     30 + hiring.nonTechnical.length * 12 + Math.min(20, foundVerbs.length * 4)
@@ -169,6 +197,27 @@ export function scanResume(resumeText: string): AtsScanResult {
         : wordCount > 900
         ? `Too long (${wordCount} words). Keep to 1 page for campus roles.`
         : `Length is in range (${wordCount} words).`,
+    },
+    {
+      name: 'LinkedIn / GitHub links',
+      status: hasProfileLink ? 'pass' : 'warning',
+      detail: hasProfileLink
+        ? 'A LinkedIn or GitHub link was found for recruiters to click through.'
+        : 'Add your LinkedIn profile URL and, for tech roles, a GitHub link next to your contact details.',
+    },
+    {
+      name: 'Third-person phrasing',
+      status: pronounHits === 0 ? 'pass' : pronounHits <= 2 ? 'warning' : 'fail',
+      detail: pronounHits === 0
+        ? 'No first-person pronouns — bullets read the way ATS resumes should.'
+        : `Found "I / my / me" ${pronounHits} time${pronounHits === 1 ? '' : 's'}. Drop pronouns — start bullets with the verb instead (e.g. "Built..." not "I built...").`,
+    },
+    {
+      name: 'Keyword balance',
+      status: keywordStuffing ? 'fail' : 'pass',
+      detail: keywordStuffing
+        ? 'The same few skills repeat many times in a short resume — this reads as keyword stuffing to ATS filters and recruiters. List each skill once and show it in a project instead.'
+        : 'Skill mentions look natural, not repeated for filler.',
     },
   ];
 
@@ -249,6 +298,15 @@ export function scanResume(resumeText: string): AtsScanResult {
     metricHits ? 'Some quantified results are present.' : 'Impact numbers are missing — this is a common reject reason.',
   ];
 
+  const failingChecks = complianceChecks.filter((c) => c.status === 'fail').map((c) => c.detail);
+  const warningChecks = complianceChecks.filter((c) => c.status === 'warning').map((c) => c.detail);
+  const missingStages = stageAdvice.filter((s) => s.status === 'missing').map((s) => s.detail);
+  const improvingStages = stageAdvice.filter((s) => s.status === 'improve').map((s) => s.detail);
+  const topPriorityActions = [...failingChecks, ...missingStages, ...warningChecks, ...improvingStages].slice(0, 3);
+  if (topPriorityActions.length === 0) {
+    topPriorityActions.push('Everything scans clean — tailor keywords per job post and start applying.');
+  }
+
   const atsSummary =
     resumeVerdict === 'good'
       ? `This resume is in good shape for ATS (${overallScore}/100). Keep the format. Next: add ${missingKeywords.slice(0, 3).join(', ') || 'role-specific keywords'} if they are real, and apply.`
@@ -304,6 +362,9 @@ export function scanResume(resumeText: string): AtsScanResult {
     resumeVerdictLabel,
     formatAdvice,
     stageAdvice,
+    topPriorityActions,
+    pageEstimate,
+    scoreWeights: SCORE_WEIGHTS,
     source: 'local-ats-engine',
     isFallback: false,
   };

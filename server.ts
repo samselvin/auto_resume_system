@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
 import { MOCK_JOBS } from "./src/data/mockJobs";
 import { inspectDraft, inspectJob, runJobBoardAgent } from "./src/lib/jobBoardAgent";
 import { fetchImportantLinkedInJobs, isAgentLinkedInJobId } from "./src/lib/linkedinGuestFeed";
@@ -15,7 +17,76 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json({ limit: "15mb" }));
+app.use(express.json({ limit: "20mb" }));
+
+function cleanExtractedText(raw: string): string {
+  return raw
+    .replace(/\r\n/g, "\n")
+    // pdf-parse inserts "-- N of M --" page-break markers between pages; strip them,
+    // they're parser bookkeeping, not resume content.
+    .replace(/\n*--\s*\d+\s*of\s*\d+\s*--\n*/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Endpoint: extract real text from an uploaded PDF or DOCX resume.
+// Previously the client tried to read binary PDF/DOCX bytes as plain text, which produced
+// garbage and silently fell back to a fake canned resume — so every non-.txt upload was
+// scored against made-up content instead of the student's actual resume.
+app.post("/api/parse-resume", async (req: Request, res: Response) => {
+  const { fileName, fileType, dataBase64 } = req.body || {};
+
+  if (!dataBase64 || typeof dataBase64 !== "string") {
+    return res.status(400).json({ error: "No file data received." });
+  }
+
+  const ext = String(fileType || fileName?.split(".").pop() || "").toLowerCase();
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(dataBase64, "base64");
+  } catch {
+    return res.status(400).json({ error: "Uploaded file data is corrupted. Please try uploading again." });
+  }
+
+  try {
+    let text = "";
+
+    if (ext === "pdf") {
+      const parser = new PDFParse({ data: buffer });
+      try {
+        const result = await parser.getText();
+        text = result.text || "";
+      } finally {
+        await parser.destroy();
+      }
+    } else if (ext === "docx") {
+      const result = await mammoth.extractRawText({ buffer });
+      text = result.value || "";
+    } else if (ext === "doc") {
+      return res.status(422).json({
+        error: "The old .doc format can't be read for text. Please re-save as .docx or PDF, or paste your resume text directly below.",
+      });
+    } else {
+      return res.status(400).json({ error: "Unsupported file type. Upload a PDF, DOCX, or TXT file." });
+    }
+
+    text = cleanExtractedText(text);
+    if (text.length < 30) {
+      return res.status(422).json({
+        error: "Could not find readable text in this file — it may be a scanned image without selectable text. Please paste your resume text directly below.",
+      });
+    }
+
+    return res.json({ text });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("Resume file parse failed:", message);
+    return res.status(422).json({
+      error: "Failed to read this file. Please paste your resume text directly below.",
+    });
+  }
+});
 
 function generateFallbackScan(resumeText: string) {
   return scanResume(resumeText || "");

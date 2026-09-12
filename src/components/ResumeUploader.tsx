@@ -31,9 +31,26 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isDark = mode === 'dark';
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          resolve(result.split(',')[1] || '');
+        } else {
+          reject(new Error('Could not read file as base64.'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Could not read file.'));
+      reader.readAsDataURL(file);
+    });
+  };
 
   // Handle file reading
   const handleFile = async (file: File) => {
@@ -45,10 +62,18 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({
       setParseError('Please upload a valid PDF, DOC, DOCX, or TXT file.');
       return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      setParseError('File is too large (max 10MB). Try a smaller file or paste your resume text directly.');
+      return;
+    }
 
-    try {
-      if (ext === 'txt') {
+    if (ext === 'txt') {
+      try {
         const text = await file.text();
+        if (text.trim().length < 30) {
+          setParseError('This file has too little text to analyze. Please paste your resume text directly below.');
+          return;
+        }
         onResumeChange({
           text: text.trim(),
           fileName: file.name,
@@ -56,51 +81,44 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({
           uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           wordCount: text.trim().split(/\s+/).length,
         });
-      } else {
-        const text = await extractTextFromFile(file);
-        if (text && text.trim().length > 30) {
-          onResumeChange({
-            text: text.trim(),
-            fileName: file.name,
-            fileType: (ext as any) || 'pdf',
-            uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            wordCount: text.trim().split(/\s+/).length,
-          });
-        } else {
-          const fallbackText = `RESUME: ${file.name}\nCandidate Name: Candidate Profile\n\nPROFESSIONAL SUMMARY\nSoftware Engineer with experience in modern web architecture, frontend and backend systems, REST APIs, databases, and automated testing.\n\nCORE SKILLS\nReact, TypeScript, JavaScript, Node.js, Express, PostgreSQL, MongoDB, Git, Docker, REST APIs, Tailwind CSS.\n\nEXPERIENCE\nSoftware Developer | Tech Systems\n- Built scalable web components and modular APIs, improving user response speed by 25%.\n- Collaborated with product managers and QA to deploy weekly production releases.\n\nEDUCATION\nBachelor of Technology in Computer Science\n\n(Note: File ${file.name} uploaded. You can edit or paste your exact resume text directly in the box below before scanning.)`;
-          onResumeChange({
-            text: fallbackText,
-            fileName: file.name,
-            fileType: (ext as any) || 'pdf',
-            uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            wordCount: fallbackText.split(/\s+/).length,
-          });
-        }
+      } catch (err) {
+        console.error('File parsing error:', err);
+        setParseError('Failed to read file. Please try pasting the text manually in the text editor below.');
       }
-    } catch (err: any) {
+      return;
+    }
+
+    // PDF / DOC / DOCX: send to the server, which uses real parsers (pdf-parse, mammoth)
+    // to extract the actual resume text instead of guessing from raw bytes.
+    setIsParsing(true);
+    try {
+      const dataBase64 = await fileToBase64(file);
+      const response = await fetch('/api/parse-resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, fileType: ext, dataBase64 }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.text) {
+        setParseError(data.error || 'Failed to read this file. Please try pasting the text manually in the text editor below.');
+        return;
+      }
+
+      const text: string = data.text;
+      onResumeChange({
+        text,
+        fileName: file.name,
+        fileType: (ext as any) || 'pdf',
+        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        wordCount: text.split(/\s+/).filter(Boolean).length,
+      });
+    } catch (err) {
       console.error('File parsing error:', err);
       setParseError('Failed to read file. Please try pasting the text manually in the text editor below.');
+    } finally {
+      setIsParsing(false);
     }
-  };
-
-  const extractTextFromFile = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result;
-        if (typeof result === 'string') {
-          const clean = result
-            .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-          resolve(clean);
-        } else {
-          resolve('');
-        }
-      };
-      reader.onerror = () => resolve('');
-      reader.readAsText(file);
-    });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -168,9 +186,9 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({
         <button
           id="trigger-ats-scan-btn"
           onClick={onScanClick}
-          disabled={isScanning || !resumeData}
+          disabled={isScanning || isParsing || !resumeData}
           className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs sm:text-sm text-white transition-all cursor-pointer shadow-md self-stretch sm:self-auto ${
-            isScanning
+            isScanning || isParsing
               ? 'bg-slate-400 opacity-70 cursor-not-allowed'
               : !resumeData
               ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed'
@@ -207,28 +225,32 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({
         />
 
         <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-            isDragging
-              ? 'border-[#1a73e8] bg-[#e8f0fe]/40'
+          onDragOver={isParsing ? undefined : handleDragOver}
+          onDragLeave={isParsing ? undefined : handleDragLeave}
+          onDrop={isParsing ? undefined : handleDrop}
+          onClick={() => !isParsing && fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
+            isParsing
+              ? 'cursor-not-allowed opacity-70 ' + (isDark ? 'border-[#37393b] bg-[#131314]/50' : 'border-[#dadce0] bg-[#f8fafd]')
+              : isDragging
+              ? 'cursor-pointer border-[#1a73e8] bg-[#e8f0fe]/40'
               : isDark
-              ? 'border-[#37393b] hover:border-[#8ab4f8] bg-[#131314]/50'
-              : 'border-[#dadce0] hover:border-[#1a73e8] bg-[#f8fafd]'
+              ? 'cursor-pointer border-[#37393b] hover:border-[#8ab4f8] bg-[#131314]/50'
+              : 'cursor-pointer border-[#dadce0] hover:border-[#1a73e8] bg-[#f8fafd]'
           }`}
         >
           <div className="flex flex-col items-center justify-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-[#e8f0fe] dark:bg-[#282a2c] flex items-center justify-center text-[#1a73e8] dark:text-[#8ab4f8]">
-              <Upload className="w-6 h-6" />
+              {isParsing ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Upload className="w-6 h-6" />}
             </div>
             <div>
               <p className={`text-sm sm:text-base font-bold ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}>
-                Click to browse or drop your resume (PDF, DOCX, TXT)
+                {isParsing ? 'Extracting text from your file...' : 'Click to browse or drop your resume (PDF, DOCX, TXT)'}
               </p>
               <p className={`text-xs mt-1 ${isDark ? 'text-[#8e918f]' : 'text-[#5f6368]'}`}>
-                Standard single-column PDF or DOC format recommended • Max file size: 10MB
+                {isParsing
+                  ? 'Reading the real content of your file — this takes a second for PDF/DOCX.'
+                  : 'Standard single-column PDF or DOC format recommended • Max file size: 10MB'}
               </p>
             </div>
           </div>
