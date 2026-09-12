@@ -7,12 +7,16 @@ interface JobBoardAgentProps {
   mode: ThemeMode;
   onHealed?: (report: AgentReport) => void;
   autoRun?: boolean;
+  /** When false, the agent still runs in the background (autoRun) and reports via onHealed,
+   * but renders no UI — students don't need to see the internal "checked N listings" chatter. */
+  visible?: boolean;
 }
 
 export const JobBoardAgent: React.FC<JobBoardAgentProps> = ({
   mode,
   onHealed,
   autoRun = true,
+  visible = true,
 }) => {
   const isDark = mode === 'dark';
   const [report, setReport] = useState<AgentReport | null>(null);
@@ -44,6 +48,8 @@ export const JobBoardAgent: React.FC<JobBoardAgentProps> = ({
       void runAgent(true);
     }
   }, [autoRun]);
+
+  if (!visible) return null;
 
   return (
     <div className={`rounded-3xl p-6 border shadow-sm space-y-4 ${

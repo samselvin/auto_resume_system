@@ -107,45 +107,11 @@ export default function App() {
     }
   });
 
-  // Generate initial job notifications for candidate (quietly in notification center)
+  // Notifications start empty and fill in only from genuinely fetched live jobs (see the
+  // /api/jobs/stream listener below). Two LinkedIn posts used to be hardcoded here and shown
+  // to every candidate as if they were just found — stale/fake info, not a real live result.
   const generateNotificationsForUser = (_currentUser: User): JobNotification[] => {
-    return [
-      {
-        id: `notif-1-${Date.now()}`,
-        jobId: 'linkedin-job-infosys-jai',
-        title: 'Junior AI Engineer',
-        company: 'Infosys',
-        companyInitials: 'INF',
-        logoBg: 'from-blue-600 to-sky-500',
-        salaryLpa: 'See LinkedIn post',
-        salaryTier: '12-20 LPA',
-        location: 'Bengaluru East, Karnataka, India',
-        message: 'LinkedIn job post: Infosys Junior AI Engineer in Bengaluru East. Apply on LinkedIn.',
-        timeAgo: '',
-        timestamp: Date.now(),
-        isRead: false,
-        type: 'match_alert',
-        linkedInUrl: 'https://www.linkedin.com/jobs/view/4418200862/',
-      },
-      {
-        id: `notif-2-${Date.now()}`,
-        jobId: 'linkedin-job-swiggy-post',
-        title: 'SDE Engineer (I, II, III) — Backend',
-        company: 'Swiggy',
-        companyInitials: 'SW',
-        logoBg: 'from-orange-500 to-rose-500',
-        salaryLpa: 'See LinkedIn post',
-        salaryTier: '12-20 LPA',
-        location: 'Bengaluru, Karnataka, India',
-        message: 'LinkedIn hiring post: Swiggy SDE I/II/III Backend in Bengaluru. Apply on LinkedIn.',
-        timeAgo: '',
-        timestamp: Date.now(),
-        isRead: false,
-        type: 'hot_job',
-        linkedInUrl:
-          'https://www.linkedin.com/posts/luckymehndiratta_swiggy-crew-is-hiring-sde-engineeri-ii-activity-7493912880321359872-fObC',
-      },
-    ];
+    return [];
   };
 
   // Load / initialize notifications when candidate is logged in (quietly into navbar)
@@ -637,6 +603,7 @@ export default function App() {
             <JobBoardAgent
               mode={mode}
               autoRun
+              visible={false}
               onHealed={(report) => {
                 const live = report.jobs.filter((j) => String(j.id).startsWith('live-job-'));
                 setJobs([...live, ...MOCK_JOBS]);

@@ -289,6 +289,15 @@ function inferExperienceTier(blob: string): Job['experienceTier'] {
   return '2-5 Yrs';
 }
 
+/** Estimate a salary tier from seniority signals — LinkedIn doesn't expose real pay via the
+ * guest feed, so every card used to be hardcoded to '12-20 LPA' regardless of role, which
+ * mislabeled intern/graduate posts as mid-senior pay and hid them from the 6-9 LPA filter. */
+function estimateSalaryTier(experienceTier: Job['experienceTier']): Job['salaryTier'] {
+  if (experienceTier === '0-2 Yrs') return '6-9 LPA';
+  if (experienceTier === '5+ Yrs') return '21+ LPA';
+  return '12-20 LPA';
+}
+
 function inferHiringNeeds(title: string, aboutText?: string) {
   return hiringNeedsFromJob({ title, description: aboutText || '' });
 }
@@ -353,6 +362,7 @@ export function guestCardToJob(card: LinkedInGuestCard): Job {
   if (isNew) tags.push('New');
   if (important) tags.push('Important');
   const hiring = inferHiringNeeds(card.title, card.aboutText);
+  const experienceTier = inferExperienceTier(`${card.title} ${card.experienceLabel || ''} ${card.aboutText || ''}`);
   return {
     id: `live-job-li-${card.jobId}`,
     title: card.title,
@@ -360,11 +370,11 @@ export function guestCardToJob(card: LinkedInGuestCard): Job {
     companyInitials: initials,
     logoBg: LOGO_BGS[Number(card.jobId) % LOGO_BGS.length],
     salaryLpa: 'See LinkedIn post',
-    salaryTier: '12-20 LPA',
+    salaryTier: estimateSalaryTier(experienceTier),
     location: card.location,
     workplaceType: card.workplaceType || parseWorkplace(card.title, card.aboutText || '', card.location),
     experience: card.experienceLabel || 'See LinkedIn post',
-    experienceTier: inferExperienceTier(`${card.title} ${card.experienceLabel || ''} ${card.aboutText || ''}`),
+    experienceTier,
     skills: hiring.all,
     technicalSkills: hiring.technical,
     nonTechnicalSkills: hiring.nonTechnical,
