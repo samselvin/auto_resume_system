@@ -12,14 +12,15 @@ import { fetchImportantLinkedInJobs, isAgentLinkedInJobId } from "./src/lib/link
 import { compareResumeToJob } from "./src/lib/resumeJobMatch";
 import { buildStudentOutreach } from "./src/lib/outreachTemplates";
 import { scanResume } from "./src/lib/atsResumeScan";
+import { verifyGoogleCredential } from "./src/server/googleAuth";
+import { startEmailSignup, verifyEmailSignup, loginWithPassword } from "./src/server/emailAuth";
 import {
-  verifyGoogleCredential,
   issueSessionToken,
   setSessionCookie,
   clearSessionCookie,
   getUserFromSession,
   toPublicUser,
-} from "./src/server/googleAuth";
+} from "./src/server/userStore";
 
 dotenv.config();
 
@@ -58,6 +59,56 @@ app.get("/api/auth/session", (req: Request, res: Response) => {
 app.post("/api/auth/logout", (_req: Request, res: Response) => {
   clearSessionCookie(res);
   return res.json({ ok: true });
+});
+
+// Endpoint: start email sign-up — sends (or, without SMTP configured, logs) a one-time
+// code so the student proves they actually own the address before an account is created.
+app.post("/api/auth/email/start", async (req: Request, res: Response) => {
+  try {
+    const { email, name } = req.body || {};
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email is required." });
+    }
+    const result = await startEmailSignup(email, String(name || ""));
+    return res.json({ ok: true, ...result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Could not send a verification code.";
+    return res.status(400).json({ error: message });
+  }
+});
+
+// Endpoint: confirm the OTP and create the account with a student-chosen password.
+app.post("/api/auth/email/verify", async (req: Request, res: Response) => {
+  try {
+    const { email, otp, password } = req.body || {};
+    if (!email || !otp || !password) {
+      return res.status(400).json({ error: "Email, code, and password are all required." });
+    }
+    const user = await verifyEmailSignup(String(email), String(otp), String(password));
+    const token = issueSessionToken(user);
+    setSessionCookie(res, token);
+    return res.json({ user: toPublicUser(user) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Could not verify that code.";
+    return res.status(400).json({ error: message });
+  }
+});
+
+// Endpoint: sign in with a previously-created email + password account.
+app.post("/api/auth/email/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required." });
+    }
+    const user = await loginWithPassword(String(email), String(password));
+    const token = issueSessionToken(user);
+    setSessionCookie(res, token);
+    return res.json({ user: toPublicUser(user) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Sign-in failed.";
+    return res.status(401).json({ error: message });
+  }
 });
 
 function cleanExtractedText(raw: string): string {

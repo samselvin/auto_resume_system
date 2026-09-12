@@ -9,6 +9,12 @@ import {
   Moon,
   CheckCircle2,
   AlertCircle,
+  Mail,
+  Lock,
+  User as UserIcon,
+  Eye,
+  EyeOff,
+  ArrowRight,
 } from 'lucide-react';
 
 declare global {
@@ -34,6 +40,19 @@ interface LoginPageProps {
 }
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const RESEND_COOLDOWN_SECONDS = 30;
+
+async function postJson(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+  return data;
+}
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   onLogin,
@@ -45,22 +64,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const buttonContainerRef = useRef<HTMLDivElement>(null);
   const hasInitializedRef = useRef(false);
 
+  // Email + OTP + password sign-in/sign-up state
+  const [emailTab, setEmailTab] = useState<'signin' | 'signup'>('signin');
+  const [otpStep, setOtpStep] = useState<'enter-details' | 'enter-code'>('enter-details');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+
   const isDark = mode === 'dark';
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = window.setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [resendCooldown]);
+
+  const switchEmailTab = (tab: 'signin' | 'signup') => {
+    setEmailTab(tab);
+    setOtpStep('enter-details');
+    setError(null);
+    setEmailNotice(null);
+    setDevOtp(null);
+    setOtp('');
+    setPassword('');
+    setConfirmPassword('');
+  };
 
   const handleCredentialResponse = async (response: { credential: string }) => {
     setError(null);
     setIsVerifying(true);
     try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ credential: response.credential }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Google sign-in failed.');
-      }
+      const data = await postJson('/api/auth/google', { credential: response.credential });
       onLogin(data.user as User);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed. Please try again.');
@@ -106,6 +147,66 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark]);
+
+  const handleSendCode = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setError(null);
+    setEmailNotice(null);
+    setDevOtp(null);
+    setIsSubmittingEmail(true);
+    try {
+      const data = await postJson('/api/auth/email/start', { email, name });
+      setOtpStep('enter-code');
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      if (data.devOtp) {
+        setDevOtp(data.devOtp);
+      } else {
+        setEmailNotice(`We sent a 6-digit code to ${email}. Check your inbox.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send a verification code.');
+    } finally {
+      setIsSubmittingEmail(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setIsSubmittingEmail(true);
+    try {
+      const data = await postJson('/api/auth/email/verify', { email, otp, password });
+      onLogin(data.user as User);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not verify that code.');
+    } finally {
+      setIsSubmittingEmail(false);
+    }
+  };
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmittingEmail(true);
+    try {
+      const data = await postJson('/api/auth/email/login', { email, password });
+      onLogin(data.user as User);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed.');
+    } finally {
+      setIsSubmittingEmail(false);
+    }
+  };
+
+  const inputClass = `w-full pl-10 pr-4 py-2.5 rounded-2xl border text-xs focus:outline-none focus:ring-2 focus:ring-[#1a73e8] transition-all ${
+    isDark
+      ? 'bg-[#131314] border-[#37393b] text-[#e3e3e3] placeholder:text-[#8e918f]'
+      : 'bg-[#f8fafd] border-[#dadce0] text-[#1f1f1f] placeholder:text-[#747775]'
+  }`;
 
   return (
     <div className={`min-h-screen flex flex-col justify-between transition-colors duration-200 font-sans relative ${
@@ -175,7 +276,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 Scan your resume, then apply to roles that match.
               </h1>
               <p className={`text-sm leading-relaxed ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
-                Sign in with your real Google account, upload a resume for a local ATS score, and apply on LinkedIn.
+                Sign in with Google, or verify your email with a one-time code and set your own password.
               </p>
             </div>
 
@@ -224,7 +325,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Google Sign-In */}
+          {/* Right Column: Sign-In */}
           <div className="lg:col-span-6 w-full max-w-md mx-auto">
             <div className={`rounded-3xl p-6 sm:p-8 border shadow-xl transition-all ${
               isDark
@@ -236,7 +337,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   Sign in to continue
                 </h2>
                 <p className={`text-xs mt-1 ${isDark ? 'text-[#c4c7c5]' : 'text-[#5f6368]'}`}>
-                  We use Google to verify it's really you — no passwords to remember or leak.
+                  Use Google, or verify your email to create your own password.
                 </p>
               </div>
 
@@ -250,13 +351,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               )}
 
               {!GOOGLE_CLIENT_ID ? (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs leading-relaxed">
+                <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs leading-relaxed">
                   Google Sign-In isn't configured yet. Set <code className="font-mono">VITE_GOOGLE_CLIENT_ID</code> and{' '}
                   <code className="font-mono">GOOGLE_CLIENT_ID</code> in your <code className="font-mono">.env</code> file
                   — see <code className="font-mono">.env.example</code> for setup steps.
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3">
+                <div className="flex flex-col items-center gap-3 mb-2">
                   {isVerifying && (
                     <p className={`text-xs ${isDark ? 'text-[#c4c7c5]' : 'text-[#5f6368]'}`}>Verifying with Google…</p>
                   )}
@@ -264,9 +365,226 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </div>
               )}
 
+              {/* Divider */}
+              <div className="my-5 flex items-center gap-3">
+                <div className={`flex-1 h-px ${isDark ? 'bg-[#37393b]' : 'bg-[#e3e3e3]'}`} />
+                <span className="text-[11px] font-bold uppercase tracking-wide text-[#747775]">or use email</span>
+                <div className={`flex-1 h-px ${isDark ? 'bg-[#37393b]' : 'bg-[#e3e3e3]'}`} />
+              </div>
+
+              {/* Email tab switch */}
+              <div className={`flex items-center p-1 rounded-full border mb-4 ${
+                isDark ? 'bg-[#131314] border-[#37393b]' : 'bg-[#f0f4f9] border-[#e3e3e3]'
+              }`}>
+                <button
+                  type="button"
+                  id="email-tab-signin"
+                  onClick={() => switchEmailTab('signin')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-full transition-all cursor-pointer ${
+                    emailTab === 'signin'
+                      ? isDark
+                        ? 'bg-[#282a2c] text-white shadow-sm ring-1 ring-[#444746]'
+                        : 'bg-white text-[#1a73e8] shadow-sm ring-1 ring-slate-200/80'
+                      : isDark
+                      ? 'text-[#c4c7c5] hover:text-white'
+                      : 'text-[#444746] hover:text-[#1f1f1f]'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  id="email-tab-signup"
+                  onClick={() => switchEmailTab('signup')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-full transition-all cursor-pointer ${
+                    emailTab === 'signup'
+                      ? isDark
+                        ? 'bg-[#282a2c] text-white shadow-sm ring-1 ring-[#444746]'
+                        : 'bg-white text-[#1a73e8] shadow-sm ring-1 ring-slate-200/80'
+                      : isDark
+                      ? 'text-[#c4c7c5] hover:text-white'
+                      : 'text-[#444746] hover:text-[#1f1f1f]'
+                  }`}
+                >
+                  Create Account
+                </button>
+              </div>
+
+              {emailTab === 'signin' ? (
+                <form onSubmit={handleEmailSignIn} className="space-y-3">
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3.5 top-3 text-[#747775]" />
+                    <input
+                      id="signin-email-input"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3.5 top-3 text-[#747775]" />
+                    <input
+                      id="signin-password-input"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className={`${inputClass} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3 text-[#747775] hover:text-[#1f1f1f] dark:hover:text-white cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <button
+                    type="submit"
+                    id="email-signin-submit"
+                    disabled={isSubmittingEmail}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full font-bold text-xs text-white bg-gradient-to-r from-[#1a73e8] via-[#7c3aed] to-[#d946ef] hover:opacity-95 shadow-md active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    <span>{isSubmittingEmail ? 'Signing in…' : 'Sign In'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              ) : otpStep === 'enter-details' ? (
+                <form onSubmit={handleSendCode} className="space-y-3">
+                  <div className="relative">
+                    <UserIcon className="w-4 h-4 absolute left-3.5 top-3 text-[#747775]" />
+                    <input
+                      id="signup-name-input"
+                      type="text"
+                      placeholder="Full name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3.5 top-3 text-[#747775]" />
+                    <input
+                      id="signup-email-input"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className={inputClass}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    id="send-otp-btn"
+                    disabled={isSubmittingEmail}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full font-bold text-xs text-white bg-gradient-to-r from-[#1a73e8] via-[#7c3aed] to-[#d946ef] hover:opacity-95 shadow-md active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    <span>{isSubmittingEmail ? 'Sending code…' : 'Send verification code'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                  <p className="text-[11px] text-center text-[#747775]">
+                    We'll email a 6-digit code to prove this address is really yours before creating an account.
+                  </p>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyCode} className="space-y-3">
+                  {emailNotice && (
+                    <p className="text-xs p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
+                      {emailNotice}
+                    </p>
+                  )}
+                  {devOtp && (
+                    <p className="text-xs p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 leading-relaxed">
+                      SMTP isn't configured, so here's the code for local testing:{' '}
+                      <strong className="font-mono text-sm tracking-widest">{devOtp}</strong>
+                    </p>
+                  )}
+                  <input
+                    id="signup-otp-input"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="6-digit code"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    required
+                    className={`w-full text-center tracking-[0.5em] font-mono py-2.5 px-4 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#1a73e8] transition-all ${
+                      isDark
+                        ? 'bg-[#131314] border-[#37393b] text-[#e3e3e3]'
+                        : 'bg-[#f8fafd] border-[#dadce0] text-[#1f1f1f]'
+                    }`}
+                  />
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3.5 top-3 text-[#747775]" />
+                    <input
+                      id="signup-password-input"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Create a password (min 8 characters)"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      className={`${inputClass} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3 text-[#747775] hover:text-[#1f1f1f] dark:hover:text-white cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3.5 top-3 text-[#747775]" />
+                    <input
+                      id="signup-confirm-password-input"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Confirm password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      className={inputClass}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    id="verify-otp-btn"
+                    disabled={isSubmittingEmail}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full font-bold text-xs text-white bg-gradient-to-r from-[#1a73e8] via-[#7c3aed] to-[#d946ef] hover:opacity-95 shadow-md active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    <span>{isSubmittingEmail ? 'Verifying…' : 'Verify & Create Account'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="flex items-center justify-between text-[11px] text-[#747775]">
+                    <button
+                      type="button"
+                      onClick={() => setOtpStep('enter-details')}
+                      className="hover:underline cursor-pointer"
+                    >
+                      ← Change email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSendCode()}
+                      disabled={resendCooldown > 0 || isSubmittingEmail}
+                      className="hover:underline cursor-pointer disabled:opacity-60 disabled:no-underline disabled:cursor-not-allowed"
+                    >
+                      {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
               <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-[#747775]">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Your Google identity is verified server-side — we never see your password.</span>
+                <span>Google identities are verified server-side; email accounts are confirmed with a one-time code.</span>
               </div>
             </div>
           </div>
