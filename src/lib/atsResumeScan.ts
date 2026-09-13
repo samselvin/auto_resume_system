@@ -14,6 +14,16 @@ const ACTION_VERBS = [
 ];
 const WEAK_STARTERS = /^(worked on|helped|did|handled|responsible for|was part of|involved in)\b/i;
 const PRONOUN_RE = /\b(i|my|me|myself)\b/i;
+const BUZZWORDS = [
+  'hardworking', 'hard-working', 'team player', 'detail-oriented', 'detail oriented',
+  'self-motivated', 'self motivated', 'go-getter', 'go getter', 'passionate',
+  'synergy', 'results-driven', 'results driven', 'proven track record',
+  'think outside the box', 'fast learner', 'quick learner', 'dynamic professional',
+  'people person', 'outside the box',
+];
+const CERT_RE =
+  /\b(AWS Certified [A-Za-z ]{3,40}|Microsoft Certified[A-Za-z: ]{0,40}|Azure (?:Fundamentals|Administrator|Developer|Solutions Architect)[A-Za-z ]{0,20}|Google Cloud Certified[A-Za-z ]{0,40}|Certified Kubernetes[A-Za-z ]{0,30}|Oracle Certified[A-Za-z ]{0,30}|CompTIA [A-Za-z+0-9]{2,20}|Certified Scrum[A-Za-z ]{0,20})\b/g;
+const BULLET_LINE_RE = /^[•\-*•●]\s+\S/;
 const SCORE_WEIGHTS = {
   keywordMatch: 0.3,
   formatting: 0.25,
@@ -87,6 +97,10 @@ export function scanResume(resumeText: string): AtsScanResult {
   const instMatch = text.match(/\b(IIT|NIT|IIIT|BITS|[A-Z][A-Za-z&.\s]{4,40}(?:University|Institute|College))\b/);
   const hasProfileLink = Boolean(linkedinMatch || githubMatch);
   const pronounHits = (text.match(new RegExp(PRONOUN_RE, 'gi')) || []).length;
+  const buzzwordHits = BUZZWORDS.filter((b) => lower.includes(b));
+  const certMatches = Array.from(new Set((text.match(CERT_RE) || []).map((m) => m.trim())));
+  const hasCertifications = certMatches.length > 0 || /\bcertificat(ion|e)s?\b/i.test(text);
+  const bulletLineCount = lines.filter((l) => BULLET_LINE_RE.test(l)).length;
 
   // Keyword-stuffing check: how many times technical terms appear vs how many distinct
   // terms were found. A resume repeating the same 3 skills 20 times should score lower
@@ -113,6 +127,7 @@ export function scanResume(resumeText: string): AtsScanResult {
   if (looksLikeName) formatting += 6;
   if (tableHeavy) formatting -= 22;
   if (pronounHits >= 3) formatting -= 10;
+  if (buzzwordHits.length >= 3) formatting -= 8;
   if (wordCount < 180) formatting -= 16;
   if (wordCount > 1100) formatting -= 8;
   formatting = clamp(formatting);
@@ -123,6 +138,8 @@ export function scanResume(resumeText: string): AtsScanResult {
   if (hasExperience) experienceDepth += 18;
   experienceDepth += Math.min(24, foundVerbs.length * 5);
   if (yearMatch) experienceDepth += 8;
+  if (bulletLineCount >= 6) experienceDepth += 6;
+  if (hasCertifications) experienceDepth += 6;
   experienceDepth = clamp(experienceDepth);
 
   let atsParseability = 40;
@@ -219,6 +236,22 @@ export function scanResume(resumeText: string): AtsScanResult {
         ? 'The same few skills repeat many times in a short resume — this reads as keyword stuffing to ATS filters and recruiters. List each skill once and show it in a project instead.'
         : 'Skill mentions look natural, not repeated for filler.',
     },
+    {
+      name: 'No generic filler phrases',
+      status: buzzwordHits.length === 0 ? 'pass' : buzzwordHits.length <= 2 ? 'warning' : 'fail',
+      detail: buzzwordHits.length === 0
+        ? 'No unverifiable buzzwords found — claims read as specific and backed by evidence.'
+        : `Found generic filler (${buzzwordHits.slice(0, 3).join(', ')}). Recruiters and ATS scoring ignore these — replace with a specific project, tool, or number that proves the same thing.`,
+    },
+    {
+      name: 'Bullet-point structure',
+      status: bulletLineCount >= 6 ? 'pass' : bulletLineCount >= 2 ? 'warning' : 'fail',
+      detail: bulletLineCount >= 6
+        ? `${bulletLineCount} bulleted lines found — scannable structure ATS and recruiters both prefer.`
+        : bulletLineCount > 0
+        ? `Only ${bulletLineCount} bulleted line${bulletLineCount === 1 ? '' : 's'} found. Break paragraph-style experience/project text into 3–5 bullets per entry.`
+        : 'No bullet points (•, -, *) detected. Use bullets for experience and project entries instead of paragraphs — ATS parsers and recruiters both scan bullets faster.',
+    },
   ];
 
   const stageAdvice: NonNullable<AtsScanResult['stageAdvice']> = [
@@ -297,6 +330,9 @@ export function scanResume(resumeText: string): AtsScanResult {
     emailMatch ? 'Contact email is ATS-visible.' : 'Contact block is incomplete.',
     metricHits ? 'Some quantified results are present.' : 'Impact numbers are missing — this is a common reject reason.',
   ];
+  if (certMatches.length) {
+    strongPoints.push(`Certifications listed: ${certMatches.slice(0, 3).join(', ')}.`);
+  }
 
   const failingChecks = complianceChecks.filter((c) => c.status === 'fail').map((c) => c.detail);
   const warningChecks = complianceChecks.filter((c) => c.status === 'warning').map((c) => c.detail);
@@ -365,6 +401,7 @@ export function scanResume(resumeText: string): AtsScanResult {
     topPriorityActions,
     pageEstimate,
     scoreWeights: SCORE_WEIGHTS,
+    certifications: certMatches,
     source: 'local-ats-engine',
     isFallback: false,
   };

@@ -15,6 +15,7 @@ import { LoginPage } from './components/LoginPage';
 import { Navbar } from './components/Navbar';
 import { ResumeUploader } from './components/ResumeUploader';
 import { AtsScoreDashboard } from './components/AtsScoreDashboard';
+import { JobDescriptionMatch } from './components/JobDescriptionMatch';
 import { JobPortal } from './components/JobPortal';
 import { JobMatchModal } from './components/JobMatchModal';
 import { ClassroomGuideModal } from './components/ClassroomGuideModal';
@@ -612,11 +613,14 @@ export default function App() {
                 </p>
               </div>
             ) : scanResult ? (
-              <AtsScoreDashboard
-                scanResult={scanResult}
-                mode={mode}
-                onExploreJobsClick={handleExploreJobsWithTier}
-              />
+              <>
+                <AtsScoreDashboard
+                  scanResult={scanResult}
+                  mode={mode}
+                  onExploreJobsClick={handleExploreJobsWithTier}
+                />
+                {resumeData?.text && <JobDescriptionMatch resumeData={resumeData} mode={mode} />}
+              </>
             ) : null}
           </div>
         )}

@@ -5,6 +5,21 @@ const STOP = new Set([
   'with', 'see', 'linkedin', 'post', 'jobs', 'job', 'role', 'apply', 'india',
 ]);
 
+// A resume that says "AWS" should count as having "Amazon Web Services" — a plain
+// substring/word check misses these since the catalog's canonical label is the full
+// name but students overwhelmingly write the short form.
+const SKILL_ALIASES: Record<string, string[]> = {
+  'amazon web services': ['aws'],
+  'google cloud': ['gcp', 'google cloud platform'],
+  'kubernetes': ['k8s'],
+  'javascript': ['js'],
+  'typescript': ['ts'],
+  'postgresql': ['postgres'],
+  'mongodb': ['mongo'],
+  'node.js': ['nodejs', 'node js'],
+  'continuous integration': ['ci cd', 'ci/cd'],
+};
+
 function normalize(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9+#.\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -264,6 +279,9 @@ function resumeHasSkill(resume: string, skill: string): boolean {
   const skillNorm = normalize(skill);
   if (!skillNorm) return false;
   if (resumeNorm.includes(skillNorm)) return true;
+
+  const aliases = SKILL_ALIASES[skillNorm];
+  if (aliases && aliases.some((alias) => resumeNorm.includes(alias))) return true;
 
   if (skillNorm === 'software engineering' || skillNorm === 'software engineer') {
     return ['software engineer', 'software developer', 'software development', 'sde', 'full stack', 'fullstack']

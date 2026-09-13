@@ -104,6 +104,19 @@ export const AtsScoreDashboard: React.FC<AtsScoreDashboardProps> = ({
               <p className={`text-xs mt-0.5 ${isDark ? 'text-[#c4c7c5]' : 'text-[#444746]'}`}>
                 {scanResult.candidateEducation?.degree ? `${scanResult.candidateEducation.degree} • ${scanResult.candidateEducation.institution || 'Engineering College'}` : 'Extracted from uploaded resume document'}
               </p>
+              {!!scanResult.certifications?.length && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  {scanResult.certifications.slice(0, 3).map((cert, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50"
+                    >
+                      <Award className="w-3 h-3" />
+                      {cert}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

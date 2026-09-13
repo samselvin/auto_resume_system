@@ -96,6 +96,7 @@ export interface AtsScanResult {
   topPriorityActions?: string[];
   pageEstimate?: string;
   scoreWeights?: Record<keyof CategoryScores, number>;
+  certifications?: string[];
 }
 
 export interface Job {
